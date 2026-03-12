@@ -1,0 +1,1 @@
+UPDATE send_queue SET status = 'pending', retry_count = 0, error_message = NULL, scheduled_at = now() WHERE status = 'failed' AND error_message LIKE '%Bad Request%';
