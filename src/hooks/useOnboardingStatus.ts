@@ -12,6 +12,7 @@ export interface OnboardingStep {
 
 export interface OnboardingStatus {
   loading: boolean;
+  hasRequiredConfig: boolean;
   isComplete: boolean;
   currentStep: number;
   steps: OnboardingStep[];
