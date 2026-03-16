@@ -186,7 +186,7 @@ export function useOnboardingStatus(): OnboardingStatus {
   }, []);
 
   const requiredSteps = steps.filter(s => s.isRequired);
-  const completedRequired = requiredSteps.filter(s => s.isComplete).length;
+  const hasRequiredConfig = requiredSteps.every(s => s.isComplete);
   const allStepsComplete = steps.every(s => s.isComplete);
   const currentStepIndex = steps.findIndex(s => !s.isComplete);
   const completionPercentage = Math.round((steps.filter(s => s.isComplete).length / steps.length) * 100);
@@ -194,6 +194,7 @@ export function useOnboardingStatus(): OnboardingStatus {
   return {
     loading,
     isComplete: allStepsComplete,
+    hasRequiredConfig,
     currentStep: currentStepIndex === -1 ? steps.length - 1 : currentStepIndex,
     steps,
     completionPercentage,
