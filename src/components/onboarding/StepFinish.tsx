@@ -333,9 +333,9 @@ export const StepFinish: React.FC<StepFinishProps> = ({
           <Rocket className="w-5 h-5 mr-2" />
           Começar a Usar o Sistema
         </Button>
-        {!canComplete && (
-          <p className="text-xs text-slate-500 text-center mt-2">
-            Corrija os erros de validação para continuar
+        {validation?.overallStatus === 'error' && (
+          <p className="text-xs text-amber-400/70 text-center mt-2">
+            ⚠️ Há avisos de validação, mas você pode continuar
           </p>
         )}
       </motion.div>
