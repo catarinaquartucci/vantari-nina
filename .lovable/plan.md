@@ -1,43 +1,30 @@
 
 
-## Central de Documentos — Plano de Implementação
+## Problem
 
-### 1. Nova tabela no banco de dados: `documents`
-Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
-- **Vínculo com cliente** (referência à tabela de contatos)
-- **Número do processo** (texto, coletado pela Nina)
-- **Nome do arquivo original**
-- **Tipo do arquivo** (PDF, DOCX, imagem)
-- **URL do arquivo** (referência ao storage)
-- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
-- **Data de recebimento**
-- Políticas de segurança para que apenas usuários autenticados acessem os documentos
+The "Começar a Usar o Sistema" button is disabled because the `canComplete` condition in `StepFinish.tsx` requires the validation edge function to return a non-error status:
 
-### 2. Nova rota e página: Central de Documentos
-- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
-- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
+```tsx
+const canComplete = validation?.overallStatus !== 'error' && requiredIncomplete.length === 0;
+```
 
-### 3. Funcionalidades da página
+The `validate-setup` function marks the overall status as `'error'` if **any** single check fails (e.g., `LOVABLE_API_KEY` missing, WhatsApp connection issue, or ElevenLabs key invalid). This blocks the button even when all onboarding steps are visually complete.
 
-#### Lista/Galeria de Documentos
-- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
-- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
+## Plan
 
-#### Filtros e Busca
-- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
-- Resultados atualizados em tempo real conforme digitação
+### 1. Update `StepFinish.tsx` — decouple button from validation errors
 
-#### Status de Análise (Badge)
-- Badge colorido ao lado de cada documento com os estados:
-  - 🟡 **Aguardando Análise**
-  - 🔵 **Em Análise Jurídica**
-  - 🟢 **Documento Validado**
-- Dropdown para alterar o status manualmente com um clique
+Change the `canComplete` logic so the button is always available once the wizard steps are complete. Validation results remain visible as informational, but don't block completion:
 
-#### Visualização e Download
-- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
-- Botão de **download direto** disponível em cada linha
+```tsx
+// Before
+const canComplete = validation?.overallStatus !== 'error' && requiredIncomplete.length === 0;
 
-### 4. Estado vazio
-- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
+// After  
+const canComplete = requiredIncomplete.length === 0;
+```
+
+Remove the conditional error message below the button (or change it to a softer warning that doesn't imply the button is blocked).
+
+This is a 2-line change in `src/components/onboarding/StepFinish.tsx` (lines ~230-235).
 
