@@ -1,43 +1,28 @@
 
 
-## Central de Documentos — Plano de Implementação
+## Problem
 
-### 1. Nova tabela no banco de dados: `documents`
-Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
-- **Vínculo com cliente** (referência à tabela de contatos)
-- **Número do processo** (texto, coletado pela Nina)
-- **Nome do arquivo original**
-- **Tipo do arquivo** (PDF, DOCX, imagem)
-- **URL do arquivo** (referência ao storage)
-- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
-- **Data de recebimento**
-- Políticas de segurança para que apenas usuários autenticados acessem os documentos
+After completing the onboarding wizard, two issues persist:
 
-### 2. Nova rota e página: Central de Documentos
-- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
-- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
+1. **OnboardingBanner on Dashboard** — It only checks `isComplete` (all steps technically complete), but does NOT check `hasSeenWizard`. So even after finishing the wizard, the banner keeps showing if some optional steps aren't marked as complete.
 
-### 3. Funcionalidades da página
+2. **Wizard auto-open logic** — This correctly checks `hasSeenWizard`, so the modal itself shouldn't reopen. But the banner is the likely culprit.
 
-#### Lista/Galeria de Documentos
-- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
-- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
+## Plan
 
-#### Filtros e Busca
-- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
-- Resultados atualizados em tempo real conforme digitação
+### 1. Update `OnboardingBanner` to respect wizard completion
 
-#### Status de Análise (Badge)
-- Badge colorido ao lado de cada documento com os estados:
-  - 🟡 **Aguardando Análise**
-  - 🔵 **Em Análise Jurídica**
-  - 🟢 **Documento Validado**
-- Dropdown para alterar o status manualmente com um clique
+In `src/components/OnboardingBanner.tsx`, add `hasSeenWizard` from the `useOnboardingStatus` hook and hide the banner when the wizard has been completed:
 
-#### Visualização e Download
-- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
-- Botão de **download direto** disponível em cada linha
+```tsx
+const { loading, isComplete, hasSeenWizard, steps, completionPercentage } = useOnboardingStatus();
 
-### 4. Estado vazio
-- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
+if (loading || isComplete || hasSeenWizard) return null;
+```
+
+### 2. Update `AppLayout` wizard auto-open logic
+
+In `src/App.tsx`, also prevent the wizard from auto-opening if `hasSeenWizard` is true (already implemented, but worth confirming no regression).
+
+This is a minimal, single-line change that ensures the banner disappears once the user completes the onboarding flow.
 
