@@ -169,7 +169,7 @@ export const StepFinish: React.FC<StepFinishProps> = ({
     }
   };
 
-  const canComplete = validation?.overallStatus !== 'error' && requiredIncomplete.length === 0;
+  const canComplete = requiredIncomplete.length === 0;
 
   return (
     <motion.div 
