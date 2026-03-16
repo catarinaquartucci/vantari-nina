@@ -21,14 +21,14 @@ import { useOnboardingStatus } from './hooks/useOnboardingStatus';
 // Componente de Layout que envolve a aplicação principal
 const AppLayout: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const { isComplete, hasSeenWizard, loading } = useOnboardingStatus();
+  const { isComplete, hasSeenWizard, loading, hasRequiredConfig } = useOnboardingStatus();
 
   // Show wizard automatically on first load if not complete and never seen
   useEffect(() => {
-    if (!loading && !isComplete && !hasSeenWizard) {
+    if (!loading && !isComplete && !hasSeenWizard && !hasRequiredConfig) {
       setShowOnboarding(true);
     }
-  }, [loading, isComplete, hasSeenWizard]);
+  }, [loading, isComplete, hasSeenWizard, hasRequiredConfig]);
 
   return (
     <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">

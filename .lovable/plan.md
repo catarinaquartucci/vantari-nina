@@ -1,50 +1,43 @@
 
 
-## Problem
+## Central de Documentos — Plano de Implementação
 
-The onboarding popup keeps appearing because:
-1. `hasSeenWizard` (localStorage flag) was never set — the user likely completed configuration but didn't click the final "Começar a usar o sistema" button, OR localStorage was cleared
-2. `isComplete` returns false because not all optional steps are marked complete
+### 1. Nova tabela no banco de dados: `documents`
+Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
+- **Vínculo com cliente** (referência à tabela de contatos)
+- **Número do processo** (texto, coletado pela Nina)
+- **Nome do arquivo original**
+- **Tipo do arquivo** (PDF, DOCX, imagem)
+- **URL do arquivo** (referência ao storage)
+- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
+- **Data de recebimento**
+- Políticas de segurança para que apenas usuários autenticados acessem os documentos
 
-The popup auto-opens when `!isComplete && !hasSeenWizard`.
+### 2. Nova rota e página: Central de Documentos
+- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
+- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
 
-## Plan
+### 3. Funcionalidades da página
 
-### 1. Make the wizard auto-open smarter (`src/App.tsx`)
+#### Lista/Galeria de Documentos
+- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
+- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
 
-Add a check against the actual database settings. If the core required settings (company_name, sdr_name, whatsapp_access_token) are already configured, don't auto-open the wizard — even if `hasSeenWizard` is false.
+#### Filtros e Busca
+- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
+- Resultados atualizados em tempo real conforme digitação
 
-Update `useOnboardingStatus` to expose a `hasRequiredConfig` boolean that checks if identity + whatsapp steps are complete.
+#### Status de Análise (Badge)
+- Badge colorido ao lado de cada documento com os estados:
+  - 🟡 **Aguardando Análise**
+  - 🔵 **Em Análise Jurídica**
+  - 🟢 **Documento Validado**
+- Dropdown para alterar o status manualmente com um clique
 
-### 2. Update `useOnboardingStatus` hook
+#### Visualização e Download
+- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
+- Botão de **download direto** disponível em cada linha
 
-Add a derived value:
-```tsx
-const hasRequiredConfig = steps
-  .filter(s => s.isRequired)
-  .every(s => s.isComplete);
-```
-
-Export it in the return object.
-
-### 3. Update auto-open logic in `AppLayout` (`src/App.tsx`)
-
-```tsx
-const { isComplete, hasSeenWizard, loading, hasRequiredConfig } = useOnboardingStatus();
-
-useEffect(() => {
-  if (!loading && !isComplete && !hasSeenWizard && !hasRequiredConfig) {
-    setShowOnboarding(true);
-  }
-}, [loading, isComplete, hasSeenWizard, hasRequiredConfig]);
-```
-
-### 4. Update `OnboardingBanner` visibility
-
-Same logic — hide the banner if required config is already done:
-```tsx
-if (loading || isComplete || hasSeenWizard || hasRequiredConfig) return null;
-```
-
-This is a ~5-line change across 3 files. The wizard will only auto-open for truly unconfigured systems.
+### 4. Estado vazio
+- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
 
