@@ -8,9 +8,9 @@ interface OnboardingBannerProps {
 }
 
 export const OnboardingBanner: React.FC<OnboardingBannerProps> = ({ onOpenWizard }) => {
-  const { loading, isComplete, steps, completionPercentage } = useOnboardingStatus();
+  const { loading, isComplete, hasSeenWizard, steps, completionPercentage } = useOnboardingStatus();
 
-  if (loading || isComplete) return null;
+  if (loading || isComplete || hasSeenWizard) return null;
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-slate-900/50 to-violet-500/10 p-6 mb-8">
