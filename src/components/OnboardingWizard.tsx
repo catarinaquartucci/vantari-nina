@@ -492,8 +492,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
     }
   }, [
     user, activeStep, companyName, sdrName, evolutionApiUrl, evolutionApiKey, evolutionInstance, 
-    systemPrompt, aiModelMode, elevenLabsApiKey, elevenLabsVoiceId, elevenLabsModel,
-    audioResponseEnabled, elevenLabsStability, elevenLabsSimilarityBoost, elevenLabsSpeed,
+    systemPrompt, aiModelMode,
     timezone, businessHoursStart, businessHoursEnd, businessDays, refetch, refetchCompanySettings
   ]);
 
