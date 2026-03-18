@@ -209,14 +209,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
   const [systemPrompt, setSystemPrompt] = useState('');
   const [aiModelMode, setAiModelMode] = useState('flash');
   
-  // Form state - ElevenLabs
-  const [elevenLabsApiKey, setElevenLabsApiKey] = useState('');
-  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState('33B4UnXyTNbgLmdEDh5P');
-  const [elevenLabsModel, setElevenLabsModel] = useState('eleven_turbo_v2_5');
-  const [audioResponseEnabled, setAudioResponseEnabled] = useState(false);
-  const [elevenLabsStability, setElevenLabsStability] = useState(0.75);
-  const [elevenLabsSimilarityBoost, setElevenLabsSimilarityBoost] = useState(0.8);
-  const [elevenLabsSpeed, setElevenLabsSpeed] = useState(1.0);
   
   // Form state - Business Hours
   const [timezone, setTimezone] = useState('America/Sao_Paulo');
