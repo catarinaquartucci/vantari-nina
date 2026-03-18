@@ -601,25 +601,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         );
       case 3:
         return (
-          <StepElevenLabs
-            elevenLabsApiKey={elevenLabsApiKey}
-            elevenLabsVoiceId={elevenLabsVoiceId}
-            elevenLabsModel={elevenLabsModel}
-            audioResponseEnabled={audioResponseEnabled}
-            elevenLabsStability={elevenLabsStability}
-            elevenLabsSimilarityBoost={elevenLabsSimilarityBoost}
-            elevenLabsSpeed={elevenLabsSpeed}
-            onApiKeyChange={setElevenLabsApiKey}
-            onVoiceIdChange={setElevenLabsVoiceId}
-            onModelChange={setElevenLabsModel}
-            onAudioEnabledChange={setAudioResponseEnabled}
-            onStabilityChange={setElevenLabsStability}
-            onSimilarityBoostChange={setElevenLabsSimilarityBoost}
-            onSpeedChange={setElevenLabsSpeed}
-          />
-        );
-      case 4:
-        return (
           <StepBusinessHours
             timezone={timezone}
             businessHoursStart={businessHoursStart}
