@@ -1,43 +1,41 @@
 
 
-## Central de Documentos — Plano de Implementação
+## Problem
 
-### 1. Nova tabela no banco de dados: `documents`
-Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
-- **Vínculo com cliente** (referência à tabela de contatos)
-- **Número do processo** (texto, coletado pela Nina)
-- **Nome do arquivo original**
-- **Tipo do arquivo** (PDF, DOCX, imagem)
-- **URL do arquivo** (referência ao storage)
-- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
-- **Data de recebimento**
-- Políticas de segurança para que apenas usuários autenticados acessem os documentos
+Three issues:
+1. **ElevenLabs step** (step 4/index 3) in the wizard causes validation errors (402/401) and shows as failed in the finish step checklist
+2. **"Começar a Usar o Sistema" button** — already decoupled from validation errors, but ElevenLabs still pollutes the validation results
+3. **Wizard reappears on reload** — `markWizardSeen()` sets localStorage but `handleComplete` does `window.location.reload()` after 800ms, and the `hasRequiredConfig` / `hasSeenWizard` checks may not prevent reopening if the page reloads before state is fully persisted
 
-### 2. Nova rota e página: Central de Documentos
-- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
-- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
+## Plan
 
-### 3. Funcionalidades da página
+### 1. Remove ElevenLabs step from wizard (OnboardingWizard.tsx)
 
-#### Lista/Galeria de Documentos
-- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
-- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
+- Remove `StepElevenLabs` import and its `case 3` in `renderStep()`
+- Remove all ElevenLabs form state variables (elevenLabsApiKey, elevenLabsVoiceId, etc.)
+- Remove ElevenLabs fields from `saveSettings()` and `validateStepData()`
+- Shift step indices: Business Hours becomes step 3, Verification step 4, Finish step 5
+- Update `isOptionalStep()` to remove `'elevenlabs'`
+- Total steps go from 7 to 6
 
-#### Filtros e Busca
-- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
-- Resultados atualizados em tempo real conforme digitação
+### 2. Remove ElevenLabs from onboarding status (useOnboardingStatus.ts)
 
-#### Status de Análise (Badge)
-- Badge colorido ao lado de cada documento com os estados:
-  - 🟡 **Aguardando Análise**
-  - 🔵 **Em Análise Jurídica**
-  - 🟢 **Documento Validado**
-- Dropdown para alterar o status manualmente com um clique
+- Remove the `elevenlabs` step definition from the steps array
+- Steps become: identity, whatsapp, agent, business_hours, verification, finish
 
-#### Visualização e Download
-- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
-- Botão de **download direto** disponível em cada linha
+### 3. Remove ElevenLabs from validation (validate-setup edge function + StepFinish.tsx)
 
-### 4. Estado vazio
-- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
+- In `supabase/functions/validate-setup/index.ts`: remove the ElevenLabs validation block
+- In `StepFinish.tsx`: remove `elevenlabs` from `componentLabels`
+
+### 4. Fix wizard persistence
+
+- In `handleComplete()` in OnboardingWizard.tsx: set localStorage directly before reload to guarantee persistence: `localStorage.setItem('onboarding_wizard_seen', 'true')`
+- In `AppLayout` (App.tsx): also check `localStorage.getItem('onboarding_wizard_seen') === 'true'` as a direct guard, not just via the hook (the hook already does this, but ensure the reload timing doesn't cause a race)
+
+### Files changed
+- `src/components/OnboardingWizard.tsx` — remove ElevenLabs step & state
+- `src/hooks/useOnboardingStatus.ts` — remove elevenlabs step
+- `src/components/onboarding/StepFinish.tsx` — remove elevenlabs label
+- `supabase/functions/validate-setup/index.ts` — remove ElevenLabs check
 
