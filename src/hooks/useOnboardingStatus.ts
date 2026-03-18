@@ -114,7 +114,7 @@ export function useOnboardingStatus(): OnboardingStatus {
             case 'whatsapp':
               return {
                 ...step,
-                isComplete: !!(settings.whatsapp_access_token && settings.whatsapp_phone_number_id && (settings as any).whatsapp_business_account_id),
+                isComplete: !!((settings as any).evolution_api_url && (settings as any).evolution_instance),
               };
             case 'agent':
               return {
