@@ -53,13 +53,6 @@ export function useOnboardingStatus(): OnboardingStatus {
       isRequired: true,
     },
     {
-      id: 'elevenlabs',
-      title: 'ElevenLabs',
-      description: 'Configure respostas em áudio (opcional)',
-      isComplete: false,
-      isRequired: false,
-    },
-    {
       id: 'business_hours',
       title: 'Horário',
       description: 'Configure o horário de atendimento',
