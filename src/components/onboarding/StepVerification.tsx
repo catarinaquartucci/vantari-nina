@@ -12,7 +12,6 @@ import {
   Bot,
   Database,
   Users,
-  Mic,
   Clock
 } from 'lucide-react';
 import { Button } from '@/components/Button';
@@ -58,7 +57,6 @@ const componentIcons: Record<string, React.ReactNode> = {
   pipeline_stages: <Database className="w-5 h-5" />,
   tag_definitions: <Database className="w-5 h-5" />,
   teams: <Users className="w-5 h-5" />,
-  elevenlabs: <Mic className="w-5 h-5" />,
   business_hours: <Clock className="w-5 h-5" />,
 };
 
@@ -71,7 +69,6 @@ const componentLabels: Record<string, string> = {
   pipeline_stages: 'Pipeline de Vendas',
   tag_definitions: 'Definições de Tags',
   teams: 'Equipes',
-  elevenlabs: 'Respostas em Áudio',
   business_hours: 'Horário Comercial',
 };
 
@@ -198,7 +195,7 @@ export const StepVerification: React.FC<StepVerificationProps> = ({ onAllChecked
     ['whatsapp', 'identity', 'agent_prompt'].includes(r.component)
   );
   const optionalResults = results.filter(r => 
-    ['teams', 'tag_definitions', 'elevenlabs', 'business_hours'].includes(r.component)
+    ['teams', 'tag_definitions', 'business_hours'].includes(r.component)
   );
 
   const renderResultGroup = (title: string, items: HealthCheckResult[]) => {
