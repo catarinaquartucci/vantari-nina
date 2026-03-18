@@ -295,14 +295,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         });
         // System prompt has default, so no validation needed
         break;
-      case 3: // ElevenLabs (optional)
-        console.log('[OnboardingWizard] Step 3 (ElevenLabs) values:', { 
-          elevenLabsApiKey: elevenLabsApiKey ? '***configured***' : 'EMPTY',
-          audioResponseEnabled
-        });
-        break;
-      case 4: // Business Hours (optional)
-        console.log('[OnboardingWizard] Step 4 (BusinessHours) values:', { 
+      case 3: // Business Hours (optional)
+        console.log('[OnboardingWizard] Step 3 (BusinessHours) values:', { 
           timezone, businessHoursStart, businessHoursEnd, businessDays
         });
         break;
