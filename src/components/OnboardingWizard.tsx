@@ -247,14 +247,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
           setSystemPrompt(data.system_prompt_override || DEFAULT_NINA_PROMPT);
           setAiModelMode(data.ai_model_mode || 'flash');
           
-          // ElevenLabs
-          setElevenLabsApiKey(data.elevenlabs_api_key || '');
-          setElevenLabsVoiceId(data.elevenlabs_voice_id || '33B4UnXyTNbgLmdEDh5P');
-          setElevenLabsModel(data.elevenlabs_model || 'eleven_turbo_v2_5');
-          setAudioResponseEnabled(data.audio_response_enabled || false);
-          setElevenLabsStability(data.elevenlabs_stability || 0.75);
-          setElevenLabsSimilarityBoost(data.elevenlabs_similarity_boost || 0.8);
-          setElevenLabsSpeed(data.elevenlabs_speed || 1.0);
           
           // Business Hours
           setTimezone(data.timezone || 'America/Sao_Paulo');
