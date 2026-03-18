@@ -563,7 +563,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
   };
 
   const isOptionalStep = (stepId: string) => {
-    return ['elevenlabs', 'business_hours'].includes(stepId);
+    return ['business_hours'].includes(stepId);
   };
 
   const renderStep = () => {
