@@ -58,7 +58,6 @@ const componentIcons: Record<string, React.ReactNode> = {
   pipeline_stages: <Database className="w-5 h-5" />,
   tag_definitions: <Database className="w-5 h-5" />,
   teams: <Users className="w-5 h-5" />,
-  elevenlabs: <Mic className="w-5 h-5" />,
   business_hours: <Clock className="w-5 h-5" />,
 };
 
