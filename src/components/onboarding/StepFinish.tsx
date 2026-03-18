@@ -62,7 +62,6 @@ const componentLabels: Record<string, string> = {
   identity: 'Identidade',
   whatsapp: 'WhatsApp',
   agent_prompt: 'Agente IA',
-  elevenlabs: 'ElevenLabs',
   business_hours: 'Horário Comercial',
   lovable_ai: 'IA Backend',
   pipeline: 'Pipeline de Vendas',
