@@ -402,7 +402,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         evolution_api_url: settings.evolution_api_url ? '✓ SET' : '✗ EMPTY',
         evolution_instance: settings.evolution_instance ? '✓ SET' : '✗ EMPTY',
         system_prompt_override: settings.system_prompt_override ? '✓ SET' : '✗ EMPTY',
-        elevenlabs_api_key: settings.elevenlabs_api_key ? '✓ SET' : '✗ EMPTY',
         is_active: settings.is_active,
         auto_response_enabled: settings.auto_response_enabled,
       });
