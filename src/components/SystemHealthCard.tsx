@@ -40,7 +40,6 @@ const componentIcons: Record<string, React.ReactNode> = {
   identity: <User className="w-4 h-4" />,
   whatsapp: <MessageSquare className="w-4 h-4" />,
   agent_prompt: <Bot className="w-4 h-4" />,
-  elevenlabs: <Mic className="w-4 h-4" />,
   business_hours: <Clock className="w-4 h-4" />,
   lovable_ai: <Sparkles className="w-4 h-4" />,
   pipeline: <Layers className="w-4 h-4" />,
