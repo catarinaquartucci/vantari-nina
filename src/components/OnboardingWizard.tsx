@@ -548,11 +548,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
 
   const handleComplete = async () => {
     await saveSettings();
+    // Set localStorage BEFORE reload to prevent race condition
+    localStorage.setItem('onboarding_wizard_seen', 'true');
     markWizardSeen();
     fireConfetti();
     toast.success('Configuração concluída! Bem-vindo ao sistema.');
     onClose();
-    // Refresh após delay para atualizar o estado do onboarding em toda a aplicação
     setTimeout(() => window.location.reload(), 800);
   };
 
