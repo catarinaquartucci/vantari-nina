@@ -9,7 +9,7 @@ import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { StepIdentity } from './onboarding/StepIdentity';
 import { StepWhatsApp } from './onboarding/StepWhatsApp';
 import { StepAgent } from './onboarding/StepAgent';
-import { StepElevenLabs } from './onboarding/StepElevenLabs';
+
 import { StepBusinessHours } from './onboarding/StepBusinessHours';
 import { StepVerification } from './onboarding/StepVerification';
 import { StepFinish } from './onboarding/StepFinish';
@@ -209,14 +209,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
   const [systemPrompt, setSystemPrompt] = useState('');
   const [aiModelMode, setAiModelMode] = useState('flash');
   
-  // Form state - ElevenLabs
-  const [elevenLabsApiKey, setElevenLabsApiKey] = useState('');
-  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState('33B4UnXyTNbgLmdEDh5P');
-  const [elevenLabsModel, setElevenLabsModel] = useState('eleven_turbo_v2_5');
-  const [audioResponseEnabled, setAudioResponseEnabled] = useState(false);
-  const [elevenLabsStability, setElevenLabsStability] = useState(0.75);
-  const [elevenLabsSimilarityBoost, setElevenLabsSimilarityBoost] = useState(0.8);
-  const [elevenLabsSpeed, setElevenLabsSpeed] = useState(1.0);
   
   // Form state - Business Hours
   const [timezone, setTimezone] = useState('America/Sao_Paulo');
@@ -255,14 +247,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
           setSystemPrompt(data.system_prompt_override || DEFAULT_NINA_PROMPT);
           setAiModelMode(data.ai_model_mode || 'flash');
           
-          // ElevenLabs
-          setElevenLabsApiKey(data.elevenlabs_api_key || '');
-          setElevenLabsVoiceId(data.elevenlabs_voice_id || '33B4UnXyTNbgLmdEDh5P');
-          setElevenLabsModel(data.elevenlabs_model || 'eleven_turbo_v2_5');
-          setAudioResponseEnabled(data.audio_response_enabled || false);
-          setElevenLabsStability(data.elevenlabs_stability || 0.75);
-          setElevenLabsSimilarityBoost(data.elevenlabs_similarity_boost || 0.8);
-          setElevenLabsSpeed(data.elevenlabs_speed || 1.0);
           
           // Business Hours
           setTimezone(data.timezone || 'America/Sao_Paulo');
@@ -311,14 +295,8 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         });
         // System prompt has default, so no validation needed
         break;
-      case 3: // ElevenLabs (optional)
-        console.log('[OnboardingWizard] Step 3 (ElevenLabs) values:', { 
-          elevenLabsApiKey: elevenLabsApiKey ? '***configured***' : 'EMPTY',
-          audioResponseEnabled
-        });
-        break;
-      case 4: // Business Hours (optional)
-        console.log('[OnboardingWizard] Step 4 (BusinessHours) values:', { 
+      case 3: // Business Hours (optional)
+        console.log('[OnboardingWizard] Step 3 (BusinessHours) values:', { 
           timezone, businessHoursStart, businessHoursEnd, businessDays
         });
         break;
@@ -332,7 +310,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
     
     return { valid: issues.length === 0, issues };
   }, [companyName, sdrName, evolutionApiUrl, evolutionApiKey, evolutionInstance, 
-      systemPrompt, aiModelMode, elevenLabsApiKey, audioResponseEnabled,
+      systemPrompt, aiModelMode,
       timezone, businessHoursStart, businessHoursEnd, businessDays]);
 
   const saveSettings = useCallback(async () => {
@@ -359,9 +337,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
       // Agent
       systemPrompt: systemPrompt ? `${systemPrompt.substring(0, 50)}...` : '(empty)',
       aiModelMode,
-      // ElevenLabs
-      elevenLabsApiKey: elevenLabsApiKey ? '***' : '(empty)',
-      audioResponseEnabled,
       // Business Hours
       timezone,
       businessHoursStart,
@@ -407,15 +382,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         system_prompt_override: systemPrompt?.trim() || DEFAULT_NINA_PROMPT,
         ai_model_mode: aiModelMode || 'flash',
         
-        // ElevenLabs
-        elevenlabs_api_key: elevenLabsApiKey?.trim() || null,
-        elevenlabs_voice_id: elevenLabsVoiceId || '33B4UnXyTNbgLmdEDh5P',
-        elevenlabs_model: elevenLabsModel || 'eleven_turbo_v2_5',
-        audio_response_enabled: Boolean(audioResponseEnabled),
-        elevenlabs_stability: Number(elevenLabsStability) || 0.75,
-        elevenlabs_similarity_boost: Number(elevenLabsSimilarityBoost) || 0.8,
-        elevenlabs_speed: Number(elevenLabsSpeed) || 1.0,
-        
         // Business Hours
         timezone: timezone || 'America/Sao_Paulo',
         business_hours_start: businessHoursStart || '09:00',
@@ -433,7 +399,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         evolution_api_url: settings.evolution_api_url ? '✓ SET' : '✗ EMPTY',
         evolution_instance: settings.evolution_instance ? '✓ SET' : '✗ EMPTY',
         system_prompt_override: settings.system_prompt_override ? '✓ SET' : '✗ EMPTY',
-        elevenlabs_api_key: settings.elevenlabs_api_key ? '✓ SET' : '✗ EMPTY',
         is_active: settings.is_active,
         auto_response_enabled: settings.auto_response_enabled,
       });
@@ -524,8 +489,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
     }
   }, [
     user, activeStep, companyName, sdrName, evolutionApiUrl, evolutionApiKey, evolutionInstance, 
-    systemPrompt, aiModelMode, elevenLabsApiKey, elevenLabsVoiceId, elevenLabsModel,
-    audioResponseEnabled, elevenLabsStability, elevenLabsSimilarityBoost, elevenLabsSpeed,
+    systemPrompt, aiModelMode,
     timezone, businessHoursStart, businessHoursEnd, businessDays, refetch, refetchCompanySettings
   ]);
 
@@ -581,11 +545,12 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
 
   const handleComplete = async () => {
     await saveSettings();
+    // Set localStorage BEFORE reload to prevent race condition
+    localStorage.setItem('onboarding_wizard_seen', 'true');
     markWizardSeen();
     fireConfetti();
     toast.success('Configuração concluída! Bem-vindo ao sistema.');
     onClose();
-    // Refresh após delay para atualizar o estado do onboarding em toda a aplicação
     setTimeout(() => window.location.reload(), 800);
   };
 
@@ -595,7 +560,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
   };
 
   const isOptionalStep = (stepId: string) => {
-    return ['elevenlabs', 'business_hours'].includes(stepId);
+    return ['business_hours'].includes(stepId);
   };
 
   const renderStep = () => {
@@ -633,25 +598,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
         );
       case 3:
         return (
-          <StepElevenLabs
-            elevenLabsApiKey={elevenLabsApiKey}
-            elevenLabsVoiceId={elevenLabsVoiceId}
-            elevenLabsModel={elevenLabsModel}
-            audioResponseEnabled={audioResponseEnabled}
-            elevenLabsStability={elevenLabsStability}
-            elevenLabsSimilarityBoost={elevenLabsSimilarityBoost}
-            elevenLabsSpeed={elevenLabsSpeed}
-            onApiKeyChange={setElevenLabsApiKey}
-            onVoiceIdChange={setElevenLabsVoiceId}
-            onModelChange={setElevenLabsModel}
-            onAudioEnabledChange={setAudioResponseEnabled}
-            onStabilityChange={setElevenLabsStability}
-            onSimilarityBoostChange={setElevenLabsSimilarityBoost}
-            onSpeedChange={setElevenLabsSpeed}
-          />
-        );
-      case 4:
-        return (
           <StepBusinessHours
             timezone={timezone}
             businessHoursStart={businessHoursStart}
@@ -663,13 +609,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
             onBusinessDaysChange={setBusinessDays}
           />
         );
-      case 5:
+      case 4:
         return (
           <StepVerification
             onAllChecked={setVerificationPassed}
           />
         );
-      case 6:
+      case 5:
         return (
           <StepFinish
             steps={steps}

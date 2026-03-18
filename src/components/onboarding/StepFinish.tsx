@@ -62,7 +62,6 @@ const componentLabels: Record<string, string> = {
   identity: 'Identidade',
   whatsapp: 'WhatsApp',
   agent_prompt: 'Agente IA',
-  elevenlabs: 'ElevenLabs',
   business_hours: 'Horário Comercial',
   lovable_ai: 'IA Backend',
   pipeline: 'Pipeline de Vendas',
@@ -333,7 +332,7 @@ export const StepFinish: React.FC<StepFinishProps> = ({
           <Rocket className="w-5 h-5 mr-2" />
           Começar a Usar o Sistema
         </Button>
-        {validation?.overallStatus === 'error' && (
+        {validation && validation.overallStatus !== 'ok' && (
           <p className="text-xs text-amber-400/70 text-center mt-2">
             ⚠️ Há avisos de validação, mas você pode continuar
           </p>

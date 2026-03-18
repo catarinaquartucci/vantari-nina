@@ -53,13 +53,6 @@ export function useOnboardingStatus(): OnboardingStatus {
       isRequired: true,
     },
     {
-      id: 'elevenlabs',
-      title: 'ElevenLabs',
-      description: 'Configure respostas em áudio (opcional)',
-      isComplete: false,
-      isRequired: false,
-    },
-    {
       id: 'business_hours',
       title: 'Horário',
       description: 'Configure o horário de atendimento',
@@ -127,11 +120,6 @@ export function useOnboardingStatus(): OnboardingStatus {
               return {
                 ...step,
                 isComplete: !!(settings.company_name && settings.sdr_name),
-              };
-            case 'elevenlabs':
-              return {
-                ...step,
-                isComplete: !!settings.elevenlabs_api_key,
               };
             case 'business_hours':
               const isDefaultConfig = 
