@@ -196,7 +196,7 @@ export const StepVerification: React.FC<StepVerificationProps> = ({ onAllChecked
     ['whatsapp', 'identity', 'agent_prompt'].includes(r.component)
   );
   const optionalResults = results.filter(r => 
-    ['teams', 'tag_definitions', 'elevenlabs', 'business_hours'].includes(r.component)
+    ['teams', 'tag_definitions', 'business_hours'].includes(r.component)
   );
 
   const renderResultGroup = (title: string, items: HealthCheckResult[]) => {
