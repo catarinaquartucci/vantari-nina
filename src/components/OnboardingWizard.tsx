@@ -337,9 +337,6 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
       // Agent
       systemPrompt: systemPrompt ? `${systemPrompt.substring(0, 50)}...` : '(empty)',
       aiModelMode,
-      // ElevenLabs
-      elevenLabsApiKey: elevenLabsApiKey ? '***' : '(empty)',
-      audioResponseEnabled,
       // Business Hours
       timezone,
       businessHoursStart,
