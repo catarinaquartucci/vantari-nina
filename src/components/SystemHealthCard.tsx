@@ -8,7 +8,6 @@ import {
   Loader2,
   MessageSquare,
   Bot,
-  Mic,
   Clock,
   User,
   Layers,
