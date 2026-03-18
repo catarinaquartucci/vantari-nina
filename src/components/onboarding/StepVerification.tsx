@@ -70,7 +70,6 @@ const componentLabels: Record<string, string> = {
   pipeline_stages: 'Pipeline de Vendas',
   tag_definitions: 'Definições de Tags',
   teams: 'Equipes',
-  elevenlabs: 'Respostas em Áudio',
   business_hours: 'Horário Comercial',
 };
 
