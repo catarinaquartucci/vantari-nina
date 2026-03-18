@@ -1,43 +1,40 @@
 
 
-## Central de Documentos — Plano de Implementação
+## Problem Analysis
 
-### 1. Nova tabela no banco de dados: `documents`
-Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
-- **Vínculo com cliente** (referência à tabela de contatos)
-- **Número do processo** (texto, coletado pela Nina)
-- **Nome do arquivo original**
-- **Tipo do arquivo** (PDF, DOCX, imagem)
-- **URL do arquivo** (referência ao storage)
-- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
-- **Data de recebimento**
-- Políticas de segurança para que apenas usuários autenticados acessem os documentos
+Two root causes found:
 
-### 2. Nova rota e página: Central de Documentos
-- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
-- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
+### 1. "ElevenLabs" still showing in Verification step (step 5)
+`StepVerification.tsx` still has `elevenlabs` in its `componentIcons`, `componentLabels`, and `optionalResults` filter (line 201). The health-check edge function likely also still returns ElevenLabs results.
 
-### 3. Funcionalidades da página
+### 2. Button disabled — WhatsApp completion check is wrong
+In `useOnboardingStatus.ts` line 117, the `whatsapp` step checks for `whatsapp_access_token && whatsapp_phone_number_id && whatsapp_business_account_id` — but the wizard saves **Evolution API** fields (`evolution_api_url`, `evolution_api_key`, `evolution_instance`). So the WhatsApp required step is **never marked complete**, meaning `requiredIncomplete.length > 0`, which disables the button.
 
-#### Lista/Galeria de Documentos
-- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
-- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
+Similarly, the `verification` step (line 137) checks `whatsapp_access_token` which also fails.
 
-#### Filtros e Busca
-- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
-- Resultados atualizados em tempo real conforme digitação
+## Plan
 
-#### Status de Análise (Badge)
-- Badge colorido ao lado de cada documento com os estados:
-  - 🟡 **Aguardando Análise**
-  - 🔵 **Em Análise Jurídica**
-  - 🟢 **Documento Validado**
-- Dropdown para alterar o status manualmente com um clique
+### 1. Fix `useOnboardingStatus.ts` — update WhatsApp completion check
+Change the `whatsapp` case to check Evolution API fields instead:
+```tsx
+case 'whatsapp':
+  return {
+    ...step,
+    isComplete: !!((settings as any).evolution_api_url && (settings as any).evolution_instance),
+  };
+```
+Also update `verification` case to remove `whatsapp_access_token` dependency.
 
-#### Visualização e Download
-- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
-- Botão de **download direto** disponível em cada linha
+### 2. Clean `StepVerification.tsx` — remove ElevenLabs references
+- Remove `elevenlabs` from `componentIcons` and `componentLabels`
+- Remove `'elevenlabs'` from `optionalResults` filter (line 201)
+- Remove `Mic` import if unused
 
-### 4. Estado vazio
-- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
+### 3. Clean `SystemHealthCard.tsx` — remove ElevenLabs references
+- Remove `elevenlabs` from its icon and label maps
+
+### Files changed
+- `src/hooks/useOnboardingStatus.ts` — fix whatsapp/verification completion logic
+- `src/components/onboarding/StepVerification.tsx` — remove elevenlabs
+- `src/components/SystemHealthCard.tsx` — remove elevenlabs
 
