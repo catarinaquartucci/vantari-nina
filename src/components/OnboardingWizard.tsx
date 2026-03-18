@@ -9,7 +9,7 @@ import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { StepIdentity } from './onboarding/StepIdentity';
 import { StepWhatsApp } from './onboarding/StepWhatsApp';
 import { StepAgent } from './onboarding/StepAgent';
-import { StepElevenLabs } from './onboarding/StepElevenLabs';
+
 import { StepBusinessHours } from './onboarding/StepBusinessHours';
 import { StepVerification } from './onboarding/StepVerification';
 import { StepFinish } from './onboarding/StepFinish';
