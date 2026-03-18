@@ -612,13 +612,13 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
             onBusinessDaysChange={setBusinessDays}
           />
         );
-      case 5:
+      case 4:
         return (
           <StepVerification
             onAllChecked={setVerificationPassed}
           />
         );
-      case 6:
+      case 5:
         return (
           <StepFinish
             steps={steps}

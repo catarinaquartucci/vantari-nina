@@ -332,7 +332,7 @@ export const StepFinish: React.FC<StepFinishProps> = ({
           <Rocket className="w-5 h-5 mr-2" />
           Começar a Usar o Sistema
         </Button>
-        {validation?.overallStatus === 'error' && (
+        {validation && validation.overallStatus !== 'ok' && (
           <p className="text-xs text-amber-400/70 text-center mt-2">
             ⚠️ Há avisos de validação, mas você pode continuar
           </p>

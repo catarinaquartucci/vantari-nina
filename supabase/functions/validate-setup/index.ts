@@ -106,24 +106,6 @@ serve(async (req) => {
         results.push({ component: 'agent_prompt', status: 'warning', message: 'Prompt do agente não personalizado', details: 'Recomendamos configurar um prompt personalizado' });
       }
 
-      // ElevenLabs (optional)
-      if (settings.elevenlabs_api_key) {
-        try {
-          const elResponse = await fetch('https://api.elevenlabs.io/v1/user', {
-            headers: { 'xi-api-key': settings.elevenlabs_api_key },
-          });
-          results.push({
-            component: 'elevenlabs',
-            status: elResponse.ok ? 'ok' : 'error',
-            message: elResponse.ok ? 'ElevenLabs conectado' : 'API Key do ElevenLabs inválida',
-          });
-        } catch {
-          results.push({ component: 'elevenlabs', status: 'warning', message: 'Não foi possível validar ElevenLabs' });
-        }
-      } else {
-        results.push({ component: 'elevenlabs', status: 'warning', message: 'ElevenLabs não configurado (opcional)', details: 'Respostas em áudio não estarão disponíveis' });
-      }
-
       // Business Hours
       if (settings.business_hours_start && settings.business_hours_end) {
         results.push({ component: 'business_hours', status: 'ok', message: `Horário: ${settings.business_hours_start} - ${settings.business_hours_end}` });

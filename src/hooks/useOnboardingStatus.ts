@@ -121,11 +121,6 @@ export function useOnboardingStatus(): OnboardingStatus {
                 ...step,
                 isComplete: !!(settings.company_name && settings.sdr_name),
               };
-            case 'elevenlabs':
-              return {
-                ...step,
-                isComplete: !!settings.elevenlabs_api_key,
-              };
             case 'business_hours':
               const isDefaultConfig = 
                 settings.timezone === 'America/Sao_Paulo' &&
