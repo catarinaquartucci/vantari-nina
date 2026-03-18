@@ -134,7 +134,7 @@ export function useOnboardingStatus(): OnboardingStatus {
             case 'verification':
               return {
                 ...step,
-                isComplete: !!(settings.company_name && settings.sdr_name && settings.whatsapp_access_token && settings.system_prompt_override),
+                isComplete: !!(settings.company_name && settings.sdr_name && settings.system_prompt_override),
               };
             case 'finish':
               return {

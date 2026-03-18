@@ -12,7 +12,6 @@ import {
   Bot,
   Database,
   Users,
-  Mic,
   Clock
 } from 'lucide-react';
 import { Button } from '@/components/Button';
