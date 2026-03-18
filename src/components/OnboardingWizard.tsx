@@ -310,7 +310,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ isOpen, onCl
     
     return { valid: issues.length === 0, issues };
   }, [companyName, sdrName, evolutionApiUrl, evolutionApiKey, evolutionInstance, 
-      systemPrompt, aiModelMode, elevenLabsApiKey, audioResponseEnabled,
+      systemPrompt, aiModelMode,
       timezone, businessHoursStart, businessHoursEnd, businessDays]);
 
   const saveSettings = useCallback(async () => {
