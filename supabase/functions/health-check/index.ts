@@ -158,11 +158,8 @@ Deno.serve(async (req) => {
         results.push({ component: 'business_hours', status: 'warning', message: 'Horário comercial não configurado' });
       }
 
-      if (settings.elevenlabs_api_key) {
-        results.push({ component: 'elevenlabs', status: 'ok', message: 'ElevenLabs configurado' });
-      } else {
-        results.push({ component: 'elevenlabs', status: 'warning', message: 'ElevenLabs não configurado (opcional)' });
-      }
+
+
 
       results.push({ component: 'nina_settings', status: 'ok', message: 'Configurações do sistema encontradas' });
     }
