@@ -9,10 +9,11 @@ const corsHeaders = {
 async function getEvolutionConfig(supabase: any) {
   const { data: settings } = await supabase
     .from('nina_settings')
-    .select('evolution_api_url, evolution_api_key, evolution_instance')
+    .select('id, evolution_api_url, evolution_api_key, evolution_instance')
     .limit(1)
     .maybeSingle();
 
+  const settingsId = settings?.id || null;
   let evolutionApiUrl = settings?.evolution_api_url || null;
   let evolutionApiKey = settings?.evolution_api_key || null;
   let evolutionInstance = settings?.evolution_instance || null;
@@ -21,23 +22,33 @@ async function getEvolutionConfig(supabase: any) {
   if (!evolutionApiKey) evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || null;
   if (!evolutionInstance) evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') || null;
 
-  // Check last observed instance from recent webhook messages
-  const { data: recentMsg } = await supabase
+  // Collect recent observed instances from webhook messages (newest first)
+  const { data: recentMessages } = await supabase
     .from('messages')
     .select('metadata')
     .eq('from_type', 'user')
     .not('metadata->evolution_instance', 'is', null)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(30);
 
-  const observedInstance = recentMsg?.metadata?.evolution_instance || null;
-  if (observedInstance && observedInstance !== evolutionInstance) {
-    console.log(`[Sender] Using observed instance "${observedInstance}" instead of configured "${evolutionInstance}"`);
-    evolutionInstance = observedInstance;
-  }
+  const historicalInstances = Array.from(
+    new Set(
+      (recentMessages || [])
+        .map((msg: any) => msg?.metadata?.evolution_instance)
+        .filter((instance: string | null | undefined): instance is string => !!instance)
+    )
+  );
 
-  return { evolutionApiUrl, evolutionApiKey, evolutionInstance };
+  const observedInstance = historicalInstances[0] || null;
+
+  return {
+    settingsId,
+    evolutionApiUrl,
+    evolutionApiKey,
+    evolutionInstance,
+    observedInstance,
+    historicalInstances,
+  };
 }
 
 serve(async (req) => {
@@ -49,7 +60,14 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { evolutionApiUrl, evolutionApiKey, evolutionInstance: configuredInstance } = await getEvolutionConfig(supabase);
+  const {
+    settingsId,
+    evolutionApiUrl,
+    evolutionApiKey,
+    evolutionInstance: configuredInstance,
+    observedInstance,
+    historicalInstances,
+  } = await getEvolutionConfig(supabase);
 
   if (!evolutionApiUrl || !evolutionApiKey) {
     console.error('[Sender] Evolution API not configured (missing URL or key)');
@@ -59,7 +77,15 @@ serve(async (req) => {
     });
   }
 
-  if (!configuredInstance) {
+  const baseInstances = Array.from(
+    new Set([
+      configuredInstance,
+      observedInstance,
+      ...historicalInstances,
+    ].filter((instance): instance is string => !!instance))
+  );
+
+  if (baseInstances.length === 0) {
     console.error('[Sender] Evolution API instance not configured');
     return new Response(JSON.stringify({ error: 'Evolution API instance not configured' }), {
       status: 500,
@@ -113,34 +139,75 @@ serve(async (req) => {
 
       for (const item of queueItems) {
         try {
-          // Resolve instance: prefer per-message metadata, fallback to global config
-          const itemInstance = item.metadata?.evolution_instance || configuredInstance;
-          console.log(`[Sender] Using instance "${itemInstance}" for item ${item.id}`);
-          
-          await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, itemInstance, item);
-          
+          const itemInstances = Array.from(
+            new Set([
+              item.metadata?.evolution_instance,
+              ...baseInstances,
+            ].filter((instance): instance is string => !!instance))
+          );
+
+          console.log(`[Sender] Candidate instances for item ${item.id}: ${itemInstances.join(', ')}`);
+
+          let sent = false;
+          let lastError: unknown = null;
+
+          for (const itemInstance of itemInstances) {
+            try {
+              console.log(`[Sender] Trying instance "${itemInstance}" for item ${item.id}`);
+              await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, itemInstance, item);
+
+              if (itemInstance !== configuredInstance && settingsId) {
+                await supabase
+                  .from('nina_settings')
+                  .update({ evolution_instance: itemInstance, updated_at: new Date().toISOString() })
+                  .eq('id', settingsId);
+                console.log(`[Sender] Persisted working instance "${itemInstance}" in nina_settings`);
+              }
+
+              sent = true;
+              break;
+            } catch (instanceError) {
+              lastError = instanceError;
+              const errorMessage = instanceError instanceof Error ? instanceError.message : String(instanceError);
+              const shouldTryNextInstance =
+                errorMessage.includes('Not Found') ||
+                errorMessage.includes('does not exist') ||
+                errorMessage.includes('404');
+
+              console.warn(`[Sender] Instance "${itemInstance}" failed for item ${item.id}: ${errorMessage}`);
+
+              if (!shouldTryNextInstance) {
+                break;
+              }
+            }
+          }
+
+          if (!sent) {
+            throw (lastError instanceof Error ? lastError : new Error('Failed to send message'));
+          }
+
           await supabase
             .from('send_queue')
             .update({ status: 'completed', sent_at: new Date().toISOString() })
             .eq('id', item.id);
-          
+
           totalSent++;
           console.log(`[Sender] Successfully sent message ${item.id} (${totalSent} total)`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           console.error(`[Sender] Error sending item ${item.id}:`, error);
-          
+
           const newRetryCount = (item.retry_count || 0) + 1;
           const shouldRetry = newRetryCount < 3;
-          
+
           await supabase
             .from('send_queue')
-            .update({ 
+            .update({
               status: shouldRetry ? 'pending' : 'failed',
               retry_count: newRetryCount,
               error_message: errorMessage,
-              scheduled_at: shouldRetry 
-                ? new Date(Date.now() + newRetryCount * 60000).toISOString() 
+              scheduled_at: shouldRetry
+                ? new Date(Date.now() + newRetryCount * 60000).toISOString()
                 : null
             })
             .eq('id', item.id);
