@@ -22,7 +22,6 @@ async function getEvolutionConfig(supabase: any) {
   if (!evolutionApiKey) evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || null;
   if (!evolutionInstance) evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') || null;
 
-  // Collect recent observed instances from webhook messages (newest first)
   const { data: recentMessages } = await supabase
     .from('messages')
     .select('metadata')
@@ -49,6 +48,29 @@ async function getEvolutionConfig(supabase: any) {
     observedInstance,
     historicalInstances,
   };
+}
+
+function isTransientError(errorMessage: string): boolean {
+  const transientPatterns = [
+    'Internal Server Error',
+    'Connection Closed',
+    'Not Found',
+    'does not exist',
+    '404',
+    '500',
+    '502',
+    '503',
+    '504',
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'timeout',
+    'AbortError',
+    'fetch failed',
+    'network error',
+  ];
+  const lower = errorMessage.toLowerCase();
+  return transientPatterns.some(p => lower.includes(p.toLowerCase()));
 }
 
 serve(async (req) => {
@@ -156,6 +178,7 @@ serve(async (req) => {
               console.log(`[Sender] Trying instance "${itemInstance}" for item ${item.id}`);
               await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, itemInstance, item);
 
+              // Auto-persist working instance
               if (itemInstance !== configuredInstance && settingsId) {
                 await supabase
                   .from('nina_settings')
@@ -169,16 +192,16 @@ serve(async (req) => {
             } catch (instanceError) {
               lastError = instanceError;
               const errorMessage = instanceError instanceof Error ? instanceError.message : String(instanceError);
-              const shouldTryNextInstance =
-                errorMessage.includes('Not Found') ||
-                errorMessage.includes('does not exist') ||
-                errorMessage.includes('404');
-
               console.warn(`[Sender] Instance "${itemInstance}" failed for item ${item.id}: ${errorMessage}`);
 
-              if (!shouldTryNextInstance) {
-                break;
+              // Try next instance on ANY transient error (not just 404)
+              if (isTransientError(errorMessage)) {
+                console.log(`[Sender] Transient error detected, trying next instance...`);
+                continue;
               }
+
+              // Non-transient error (e.g. auth failure) — stop trying
+              break;
             }
           }
 
@@ -247,102 +270,165 @@ async function sendMessage(
 
   if (!contact) throw new Error('Contact not found');
 
-  const recipient = contact.whatsapp_id || contact.phone_number;
+  const rawRecipient = contact.whatsapp_id || contact.phone_number;
+  const sanitizedNumber = rawRecipient.replace(/[^0-9]/g, '');
 
-  let endpoint: string;
-  let payload: any;
+  // Build payload variations for text messages to handle different Evolution API versions
+  const payloadVariations = buildPayloadVariations(apiUrl, instance, queueItem, sanitizedNumber, rawRecipient);
+
+  let lastError: Error | null = null;
+
+  for (const variation of payloadVariations) {
+    try {
+      console.log(`[Sender] Trying payload variation: ${variation.label}`);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      const response = await fetch(variation.endpoint, {
+        method: 'POST',
+        headers: {
+          'apikey': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(variation.payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      // Read response safely
+      let responseData: any;
+      const responseText = await response.text();
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = { raw: responseText };
+      }
+
+      if (!response.ok) {
+        const errMsg = responseData?.message || responseData?.error || responseData?.raw || `HTTP ${response.status}`;
+        console.warn(`[Sender] Variation "${variation.label}" failed (${response.status}): ${errMsg}`);
+        lastError = new Error(errMsg);
+
+        // For 5xx errors, try next payload variation
+        if (response.status >= 500) continue;
+        // For 4xx (except 404), this variation won't help — but try next anyway
+        if (response.status === 404) continue;
+        // For auth errors, throw immediately
+        if (response.status === 401 || response.status === 403) throw lastError;
+        continue;
+      }
+
+      const whatsappMessageId = responseData.key?.id || responseData.id;
+      console.log('[Sender] Message sent, ID:', whatsappMessageId);
+
+      // Update message record
+      if (queueItem.message_id) {
+        await supabase
+          .from('messages')
+          .update({
+            whatsapp_message_id: whatsappMessageId,
+            status: 'sent',
+            sent_at: new Date().toISOString()
+          })
+          .eq('id', queueItem.message_id);
+      } else {
+        await supabase
+          .from('messages')
+          .insert({
+            conversation_id: queueItem.conversation_id,
+            whatsapp_message_id: whatsappMessageId,
+            content: queueItem.content,
+            type: queueItem.message_type,
+            from_type: queueItem.from_type,
+            status: 'sent',
+            media_url: queueItem.media_url || null,
+            sent_at: new Date().toISOString(),
+            metadata: queueItem.metadata || {}
+          });
+      }
+
+      await supabase
+        .from('conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', queueItem.conversation_id);
+
+      return; // Success
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('401') || err.message.includes('403'))) {
+        throw err;
+      }
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[Sender] Variation "${variation.label}" threw: ${lastError.message}`);
+      continue;
+    }
+  }
+
+  throw lastError || new Error('All payload variations failed');
+}
+
+function buildPayloadVariations(
+  apiUrl: string, instance: string, queueItem: any,
+  sanitizedNumber: string, rawRecipient: string
+): Array<{ label: string; endpoint: string; payload: any }> {
+  const variations: Array<{ label: string; endpoint: string; payload: any }> = [];
 
   switch (queueItem.message_type) {
-    case 'text':
-      endpoint = `${apiUrl}/message/sendText/${instance}`;
-      payload = { number: recipient.replace(/[^0-9]/g, ''), text: queueItem.content, textMessage: { text: queueItem.content } };
+    case 'text': {
+      // Variation 1: sanitized number with both text fields
+      variations.push({
+        label: 'text-sanitized-dual',
+        endpoint: `${apiUrl}/message/sendText/${instance}`,
+        payload: { number: sanitizedNumber, text: queueItem.content, textMessage: { text: queueItem.content } },
+      });
+      // Variation 2: number with @s.whatsapp.net suffix
+      variations.push({
+        label: 'text-whatsapp-suffix',
+        endpoint: `${apiUrl}/message/sendText/${instance}`,
+        payload: { number: `${sanitizedNumber}@s.whatsapp.net`, text: queueItem.content, textMessage: { text: queueItem.content } },
+      });
+      // Variation 3: minimal payload (only text field)
+      variations.push({
+        label: 'text-minimal',
+        endpoint: `${apiUrl}/message/sendText/${instance}`,
+        payload: { number: sanitizedNumber, text: queueItem.content },
+      });
       break;
-    
+    }
     case 'image':
-      endpoint = `${apiUrl}/message/sendMedia/${instance}`;
-      payload = {
-        number: recipient,
-        mediaMessage: {
-          mediatype: 'image',
-          media: queueItem.media_url,
-          caption: queueItem.content || undefined
-        }
-      };
+      variations.push({
+        label: 'image',
+        endpoint: `${apiUrl}/message/sendMedia/${instance}`,
+        payload: {
+          number: sanitizedNumber,
+          mediaMessage: { mediatype: 'image', media: queueItem.media_url, caption: queueItem.content || undefined }
+        },
+      });
       break;
-    
     case 'audio':
-      endpoint = `${apiUrl}/message/sendWhatsAppAudio/${instance}`;
-      payload = {
-        number: recipient,
-        audio: queueItem.media_url
-      };
+      variations.push({
+        label: 'audio',
+        endpoint: `${apiUrl}/message/sendWhatsAppAudio/${instance}`,
+        payload: { number: sanitizedNumber, audio: queueItem.media_url },
+      });
       break;
-    
     case 'document':
-      endpoint = `${apiUrl}/message/sendMedia/${instance}`;
-      payload = {
-        number: recipient,
-        mediaMessage: {
-          mediatype: 'document',
-          media: queueItem.media_url,
-          fileName: queueItem.content || 'document'
-        }
-      };
+      variations.push({
+        label: 'document',
+        endpoint: `${apiUrl}/message/sendMedia/${instance}`,
+        payload: {
+          number: sanitizedNumber,
+          mediaMessage: { mediatype: 'document', media: queueItem.media_url, fileName: queueItem.content || 'document' }
+        },
+      });
       break;
-    
     default:
-      endpoint = `${apiUrl}/message/sendText/${instance}`;
-      payload = { number: recipient.replace(/[^0-9]/g, ''), text: queueItem.content, textMessage: { text: queueItem.content } };
-  }
-
-  console.log('[Sender] Evolution API payload:', JSON.stringify(payload, null, 2));
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'apikey': apiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  const responseData = await response.json();
-
-  if (!response.ok) {
-    console.error('[Sender] Evolution API error:', responseData);
-    throw new Error(responseData.message || responseData.error || 'Evolution API error');
-  }
-
-  const whatsappMessageId = responseData.key?.id || responseData.id;
-  console.log('[Sender] Message sent, ID:', whatsappMessageId);
-
-  if (queueItem.message_id) {
-    await supabase
-      .from('messages')
-      .update({
-        whatsapp_message_id: whatsappMessageId,
-        status: 'sent',
-        sent_at: new Date().toISOString()
-      })
-      .eq('id', queueItem.message_id);
-  } else {
-    await supabase
-      .from('messages')
-      .insert({
-        conversation_id: queueItem.conversation_id,
-        whatsapp_message_id: whatsappMessageId,
-        content: queueItem.content,
-        type: queueItem.message_type,
-        from_type: queueItem.from_type,
-        status: 'sent',
-        media_url: queueItem.media_url || null,
-        sent_at: new Date().toISOString(),
-        metadata: queueItem.metadata || {}
+      variations.push({
+        label: 'default-text',
+        endpoint: `${apiUrl}/message/sendText/${instance}`,
+        payload: { number: sanitizedNumber, text: queueItem.content, textMessage: { text: queueItem.content } },
       });
   }
 
-  await supabase
-    .from('conversations')
-    .update({ last_message_at: new Date().toISOString() })
-    .eq('id', queueItem.conversation_id);
+  return variations;
 }

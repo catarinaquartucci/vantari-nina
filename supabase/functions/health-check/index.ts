@@ -19,15 +19,10 @@ async function getEvolutionConfig(supabase: any) {
     .limit(1)
     .maybeSingle();
 
-  let evolutionApiUrl = settings?.evolution_api_url || null;
-  let evolutionApiKey = settings?.evolution_api_key || null;
-  let evolutionInstance = settings?.evolution_instance || null;
+  let evolutionApiUrl = settings?.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || null;
+  let evolutionApiKey = settings?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || null;
+  let evolutionInstance = settings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
 
-  if (!evolutionApiUrl) evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL') || null;
-  if (!evolutionApiKey) evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || null;
-  if (!evolutionInstance) evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') || null;
-
-  // Check last observed instance from recent webhook messages
   const { data: recentMsg } = await supabase
     .from('messages')
     .select('metadata')
@@ -39,7 +34,6 @@ async function getEvolutionConfig(supabase: any) {
 
   const observedInstance = recentMsg?.metadata?.evolution_instance || null;
   if (observedInstance && observedInstance !== evolutionInstance) {
-    console.log(`[health-check] Using observed instance "${observedInstance}" instead of configured "${evolutionInstance}"`);
     evolutionInstance = observedInstance;
   }
 
@@ -68,25 +62,47 @@ Deno.serve(async (req) => {
     }
 
     const results: HealthCheckResult[] = [];
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. Check LOVABLE_API_KEY
+    // 1. LOVABLE_API_KEY
     if (lovableApiKey && lovableApiKey.length > 10) {
       results.push({ component: 'lovable_api_key', status: 'ok', message: 'LOVABLE_API_KEY está configurada' });
     } else {
       results.push({ component: 'lovable_api_key', status: 'error', message: 'LOVABLE_API_KEY não está configurada. A IA não funcionará.' });
     }
 
-    // 2. Check Evolution API — resilient with recent messages fallback
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // 2. WhatsApp — check incoming AND outgoing
     const { count: recentUserMessages } = await supabase
       .from('messages')
       .select('*', { count: 'exact', head: true })
       .eq('from_type', 'user')
       .gte('created_at', twentyFourHoursAgo);
 
-    const hasRecentMessages = (recentUserMessages || 0) > 0;
+    const hasRecentIncoming = (recentUserMessages || 0) > 0;
 
-    if (evolutionApiUrl && evolutionApiKey && evolutionInstance) {
+    const { count: recentSentOk } = await supabase
+      .from('send_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed')
+      .gte('sent_at', twentyFourHoursAgo);
+
+    const hasRecentOutgoing = (recentSentOk || 0) > 0;
+
+    const { count: recentSendFailed } = await supabase
+      .from('send_queue')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'failed')
+      .gte('created_at', twentyFourHoursAgo);
+
+    const hasRecentFailures = (recentSendFailed || 0) > 0;
+
+    if (hasRecentIncoming && hasRecentOutgoing) {
+      results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp operacional (recebe e envia)' });
+    } else if (hasRecentIncoming && hasRecentFailures) {
+      results.push({ component: 'whatsapp', status: 'warning', message: 'WhatsApp recebe, mas há falhas de envio', details: { failed: recentSendFailed } });
+    } else if (hasRecentIncoming) {
+      results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
+    } else if (evolutionApiUrl && evolutionApiKey && evolutionInstance) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -100,29 +116,21 @@ Deno.serve(async (req) => {
           const state = connData.instance?.state || connData.state || 'unknown';
           results.push({
             component: 'whatsapp',
-            status: state === 'open' ? 'ok' : (hasRecentMessages ? 'ok' : 'warning'),
-            message: state === 'open' ? 'WhatsApp conectado via Evolution API' : (hasRecentMessages ? 'WhatsApp ativo (mensagens recebidas recentemente)' : `WhatsApp: estado "${state}"`),
+            status: state === 'open' ? 'ok' : 'warning',
+            message: state === 'open' ? 'WhatsApp conectado via Evolution API' : `WhatsApp: estado "${state}"`,
             details: { instance: evolutionInstance, state },
           });
-        } else if (hasRecentMessages) {
-          results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
         } else {
           results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar Evolution API' });
         }
       } catch {
-        if (hasRecentMessages) {
-          results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
-        } else {
-          results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar conexão Evolution API' });
-        }
+        results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar conexão Evolution API' });
       }
-    } else if (hasRecentMessages) {
-      results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
     } else {
       results.push({ component: 'whatsapp', status: 'warning', message: 'Evolution API não configurada (secrets não definidos)' });
     }
 
-    // 3. Check nina_settings
+    // 3. nina_settings
     let settings = null;
     if (userId) {
       const { data } = await supabase.from('nina_settings').select('*').eq('user_id', userId).maybeSingle();
@@ -157,9 +165,6 @@ Deno.serve(async (req) => {
       } else {
         results.push({ component: 'business_hours', status: 'warning', message: 'Horário comercial não configurado' });
       }
-
-
-
 
       results.push({ component: 'nina_settings', status: 'ok', message: 'Configurações do sistema encontradas' });
     }
