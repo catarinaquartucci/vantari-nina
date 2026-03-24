@@ -1,43 +1,44 @@
 
 
-## Central de Documentos — Plano de Implementação
+## Problema
 
-### 1. Nova tabela no banco de dados: `documents`
-Criar uma tabela para armazenar os documentos recebidos via WhatsApp, com os seguintes campos:
-- **Vínculo com cliente** (referência à tabela de contatos)
-- **Número do processo** (texto, coletado pela Nina)
-- **Nome do arquivo original**
-- **Tipo do arquivo** (PDF, DOCX, imagem)
-- **URL do arquivo** (referência ao storage)
-- **Status de análise**: `aguardando_analise`, `em_analise_juridica`, `documento_validado`
-- **Data de recebimento**
-- Políticas de segurança para que apenas usuários autenticados acessem os documentos
+A mensagem chegou no webhook, mas foi rejeitada com `"Invalid sender, ignoring: 41841655308338@lid"`.
 
-### 2. Nova rota e página: Central de Documentos
-- Adicionar item **"Central de Documentos"** na sidebar, posicionado logo abaixo de **Pipeline** (com ícone de documento)
-- Criar a página com layout consistente com o restante do sistema (tema escuro, estilo glass)
+O WhatsApp agora usa o formato **LID** (`@lid`) no `remoteJid` em vez do tradicional `@s.whatsapp.net`. O código atual tenta extrair o telefone do `remoteJid`, mas não reconhece `@lid` — e como sobra um `@` no resultado, a mensagem é descartada.
 
-### 3. Funcionalidades da página
+Porém, o payload da Evolution API inclui o campo `body.sender` com o formato correto: `5511952135676@s.whatsapp.net`.
 
-#### Lista/Galeria de Documentos
-- Exibição em tabela com colunas: **Nome do Arquivo**, **Cliente**, **Nº do Processo**, **Tipo**, **Status**, **Data de Recebimento**
-- Ícones visuais por tipo de arquivo (PDF, DOCX, imagem)
+## Solução
 
-#### Filtros e Busca
-- Campo de busca que filtra por **Nome do Cliente** ou **Número do Processo**
-- Resultados atualizados em tempo real conforme digitação
+Ajustar a lógica de extração do número de telefone no `whatsapp-webhook` para:
 
-#### Status de Análise (Badge)
-- Badge colorido ao lado de cada documento com os estados:
-  - 🟡 **Aguardando Análise**
-  - 🔵 **Em Análise Jurídica**
-  - 🟢 **Documento Validado**
-- Dropdown para alterar o status manualmente com um clique
+1. **Preferir `body.sender`** quando o `remoteJid` estiver em formato LID (`@lid`)
+2. **Também tratar `@lid`** na limpeza do número para cobrir casos futuros
 
-#### Visualização e Download
-- Ao clicar no documento, ele abre em **nova aba** do navegador para leitura
-- Botão de **download direto** disponível em cada linha
+### Alteração em `supabase/functions/whatsapp-webhook/index.ts` (linhas 121-131)
 
-### 4. Estado vazio
-- Quando não houver documentos, exibir mensagem amigável indicando que os documentos enviados por clientes via WhatsApp aparecerão aqui automaticamente
+```typescript
+// 2. Extract sender phone number — prefer body.sender for LID format
+const remoteJidValue = remoteJid;
+let sender = '';
+
+if (remoteJidValue.includes('@lid')) {
+  // LID format: use body.sender which has the real phone@s.whatsapp.net
+  sender = body.sender || remoteJidValue;
+} else {
+  sender = remoteJidValue || body.sender || '';
+}
+
+const phoneNumber = sender
+  .replace('@s.whatsapp.net', '')
+  .replace('@g.us', '')
+  .replace('@lid', '');
+
+if (!phoneNumber || phoneNumber.includes('@')) {
+  console.log('[Webhook] Invalid sender, ignoring:', sender);
+  // ...
+}
+```
+
+Alteração em 1 arquivo: `supabase/functions/whatsapp-webhook/index.ts`.
 
