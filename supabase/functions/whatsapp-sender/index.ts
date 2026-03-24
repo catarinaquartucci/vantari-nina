@@ -33,11 +33,19 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { evolutionApiUrl, evolutionApiKey, evolutionInstance } = await getEvolutionConfig(supabase);
+  const { evolutionApiUrl, evolutionApiKey, evolutionInstance: configuredInstance } = await getEvolutionConfig(supabase);
 
-  if (!evolutionApiUrl || !evolutionApiKey || !evolutionInstance) {
-    console.error('[Sender] Evolution API not configured');
+  if (!evolutionApiUrl || !evolutionApiKey) {
+    console.error('[Sender] Evolution API not configured (missing URL or key)');
     return new Response(JSON.stringify({ error: 'Evolution API not configured' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  if (!configuredInstance) {
+    console.error('[Sender] Evolution API instance not configured');
+    return new Response(JSON.stringify({ error: 'Evolution API instance not configured' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
