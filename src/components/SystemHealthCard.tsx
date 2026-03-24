@@ -228,6 +228,22 @@ export const SystemHealthCard: React.FC = () => {
               </div>
             </motion.div>
           ))}
+
+          {lastSendError && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="col-span-2 mt-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20"
+            >
+              <p className="text-xs font-medium text-red-400 mb-1">Último erro de envio:</p>
+              <p className="text-[11px] text-red-300/80 font-mono break-all">
+                {lastSendError.error_message || 'Erro desconhecido'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                {new Date(lastSendError.created_at).toLocaleString('pt-BR')} • {lastSendError.retry_count} tentativas
+              </p>
+            </motion.div>
+          )}
         </motion.div>
       )}
     </motion.div>
