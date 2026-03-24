@@ -23,8 +23,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Evolution API config: nina_settings first, fallback to env
-    // Also check for the last observed instance from incoming webhooks
+    // Evolution API config
     const { data: evoSettings } = await supabase
       .from('nina_settings')
       .select('evolution_api_url, evolution_api_key, evolution_instance')
@@ -35,7 +34,7 @@ serve(async (req) => {
     const evolutionApiKey = evoSettings?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || null;
     let evolutionInstance = evoSettings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
 
-    // Check last observed instance from recent messages
+    // Check last observed instance
     const { data: recentMsg } = await supabase
       .from('messages')
       .select('metadata')
@@ -91,18 +90,43 @@ serve(async (req) => {
         results.push({ component: 'identity', status: 'warning', message: 'Identidade não configurada', details: 'Configure nome da empresa e SDR' });
       }
 
-      // WhatsApp via Evolution API — resilient check
-      // First check if there are recent user messages (last 24h) as proof WhatsApp is working
+      // WhatsApp — check both incoming AND outgoing activity
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
       const { count: recentUserMessages } = await supabase
         .from('messages')
         .select('*', { count: 'exact', head: true })
         .eq('from_type', 'user')
         .gte('created_at', twentyFourHoursAgo);
 
-      const hasRecentMessages = (recentUserMessages || 0) > 0;
+      const hasRecentIncoming = (recentUserMessages || 0) > 0;
 
-      if (evolutionApiUrl && evolutionApiKey && evolutionInstance) {
+      // Check outgoing: successful sends in last 24h
+      const { count: recentSentOk } = await supabase
+        .from('send_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed')
+        .gte('sent_at', twentyFourHoursAgo);
+
+      const hasRecentOutgoing = (recentSentOk || 0) > 0;
+
+      // Check recent send failures
+      const { count: recentSendFailed } = await supabase
+        .from('send_queue')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'failed')
+        .gte('created_at', twentyFourHoursAgo);
+
+      const hasRecentFailures = (recentSendFailed || 0) > 0;
+
+      if (hasRecentIncoming && hasRecentOutgoing) {
+        results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp operacional (recebe e envia)' });
+      } else if (hasRecentIncoming && hasRecentFailures) {
+        results.push({ component: 'whatsapp', status: 'warning', message: 'WhatsApp recebe, mas há falhas de envio', details: `${recentSendFailed} envios falharam nas últimas 24h` });
+      } else if (hasRecentIncoming) {
+        results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
+      } else if (evolutionApiUrl && evolutionApiKey && evolutionInstance) {
+        // No recent messages — try API check
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -116,27 +140,17 @@ serve(async (req) => {
             const state = connData.instance?.state || connData.state || 'unknown';
             if (state === 'open') {
               results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp conectado via Evolution API' });
-            } else if (hasRecentMessages) {
-              results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)', details: `API estado: ${state}` });
             } else {
               results.push({ component: 'whatsapp', status: 'warning', message: `Evolution API estado: ${state}`, details: 'Verifique a conexão da instância' });
             }
-          } else if (hasRecentMessages) {
-            results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
           } else {
             results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar Evolution API', details: 'Verifique URL e API Key' });
           }
         } catch {
-          if (hasRecentMessages) {
-            results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
-          } else {
-            results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível validar Evolution API', details: 'Erro de conexão' });
-          }
+          results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível validar Evolution API', details: 'Erro de conexão ou timeout' });
         }
-      } else if (hasRecentMessages) {
-        results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
       } else {
-        results.push({ component: 'whatsapp', status: 'warning', message: 'Evolution API não configurada', details: 'Configure os secrets EVOLUTION_API_URL, EVOLUTION_API_KEY e EVOLUTION_INSTANCE' });
+        results.push({ component: 'whatsapp', status: 'warning', message: 'Evolution API não configurada' });
       }
 
       // Agent Prompt
