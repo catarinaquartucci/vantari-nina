@@ -95,9 +95,10 @@ serve(async (req) => {
         });
       }
 
-      // Handle incoming messages (messages.upsert)
-      if (event !== 'messages.upsert') {
-        console.log('[Webhook] Ignoring event:', event);
+      // Handle incoming messages (messages.upsert or similar)
+      const isMessageEvent = event === 'messages.upsert' || event === 'messages.create' || event === 'message' || event === 'messages';
+      if (!isMessageEvent) {
+        console.log('[Webhook] Ignoring non-message event:', event);
         return new Response(JSON.stringify({ status: 'ignored', event }), { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
