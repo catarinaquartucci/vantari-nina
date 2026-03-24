@@ -26,7 +26,7 @@ serve(async (req) => {
   let evolutionInstanceName: string | null = null;
   const { data: evoSettings } = await supabase
     .from('nina_settings')
-    .select('evolution_instance')
+    .select('id, evolution_instance')
     .limit(1)
     .maybeSingle();
   evolutionInstanceName = evoSettings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
