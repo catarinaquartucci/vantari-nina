@@ -26,7 +26,7 @@ serve(async (req) => {
   let evolutionInstanceName: string | null = null;
   const { data: evoSettings } = await supabase
     .from('nina_settings')
-    .select('evolution_instance')
+    .select('id, evolution_instance')
     .limit(1)
     .maybeSingle();
   evolutionInstanceName = evoSettings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
@@ -39,6 +39,16 @@ serve(async (req) => {
 
       const event = body.event;
       const instance = body.instance || evolutionInstanceName || 'vantari-nina';
+
+      // Auto-sync: if webhook reports a different instance than what's saved, update nina_settings
+      if (body.instance && evoSettings?.id && body.instance !== evoSettings.evolution_instance) {
+        console.log(`[Webhook] Instance mismatch detected: saved="${evoSettings.evolution_instance}" received="${body.instance}". Auto-syncing...`);
+        await supabase
+          .from('nina_settings')
+          .update({ evolution_instance: body.instance, updated_at: new Date().toISOString() })
+          .eq('id', evoSettings.id);
+        console.log(`[Webhook] nina_settings.evolution_instance updated to "${body.instance}"`);
+      }
 
       // Handle status updates (messages.update)
       if (event === 'messages.update') {

@@ -930,7 +930,8 @@ async function processQueueItem(
               ai_model: aiSettings.model,
               audio_generated: true,
               text_content: aiContent,
-              appointment_created: appointmentCreated?.id || null
+              appointment_created: appointmentCreated?.id || null,
+              evolution_instance: item.context_data?.phone_number_id || null
             }
           });
 
@@ -1023,7 +1024,8 @@ async function queueTextResponse(
           ai_model: aiSettings.model,
           chunk_index: i,
           total_chunks: messageChunks.length,
-          appointment_created: appointmentCreated?.id || null
+          appointment_created: appointmentCreated?.id || null,
+          evolution_instance: item.context_data?.phone_number_id || null
         }
       });
 

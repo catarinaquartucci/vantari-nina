@@ -21,6 +21,22 @@ async function getEvolutionConfig(supabase: any) {
   if (!evolutionApiKey) evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || null;
   if (!evolutionInstance) evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') || null;
 
+  // Check last observed instance from recent webhook messages
+  const { data: recentMsg } = await supabase
+    .from('messages')
+    .select('metadata')
+    .eq('from_type', 'user')
+    .not('metadata->evolution_instance', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const observedInstance = recentMsg?.metadata?.evolution_instance || null;
+  if (observedInstance && observedInstance !== evolutionInstance) {
+    console.log(`[Sender] Using observed instance "${observedInstance}" instead of configured "${evolutionInstance}"`);
+    evolutionInstance = observedInstance;
+  }
+
   return { evolutionApiUrl, evolutionApiKey, evolutionInstance };
 }
 
@@ -33,11 +49,19 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  const { evolutionApiUrl, evolutionApiKey, evolutionInstance } = await getEvolutionConfig(supabase);
+  const { evolutionApiUrl, evolutionApiKey, evolutionInstance: configuredInstance } = await getEvolutionConfig(supabase);
 
-  if (!evolutionApiUrl || !evolutionApiKey || !evolutionInstance) {
-    console.error('[Sender] Evolution API not configured');
+  if (!evolutionApiUrl || !evolutionApiKey) {
+    console.error('[Sender] Evolution API not configured (missing URL or key)');
     return new Response(JSON.stringify({ error: 'Evolution API not configured' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  if (!configuredInstance) {
+    console.error('[Sender] Evolution API instance not configured');
+    return new Response(JSON.stringify({ error: 'Evolution API instance not configured' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
@@ -89,7 +113,11 @@ serve(async (req) => {
 
       for (const item of queueItems) {
         try {
-          await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, evolutionInstance, item);
+          // Resolve instance: prefer per-message metadata, fallback to global config
+          const itemInstance = item.metadata?.evolution_instance || configuredInstance;
+          console.log(`[Sender] Using instance "${itemInstance}" for item ${item.id}`);
+          
+          await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, itemInstance, item);
           
           await supabase
             .from('send_queue')

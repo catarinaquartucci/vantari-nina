@@ -24,6 +24,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Evolution API config: nina_settings first, fallback to env
+    // Also check for the last observed instance from incoming webhooks
     const { data: evoSettings } = await supabase
       .from('nina_settings')
       .select('evolution_api_url, evolution_api_key, evolution_instance')
@@ -32,7 +33,23 @@ serve(async (req) => {
 
     const evolutionApiUrl = evoSettings?.evolution_api_url || Deno.env.get('EVOLUTION_API_URL') || null;
     const evolutionApiKey = evoSettings?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY') || null;
-    const evolutionInstance = evoSettings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
+    let evolutionInstance = evoSettings?.evolution_instance || Deno.env.get('EVOLUTION_INSTANCE') || null;
+
+    // Check last observed instance from recent messages
+    const { data: recentMsg } = await supabase
+      .from('messages')
+      .select('metadata')
+      .eq('from_type', 'user')
+      .not('metadata->evolution_instance', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const observedInstance = recentMsg?.metadata?.evolution_instance || null;
+    if (observedInstance && observedInstance !== evolutionInstance) {
+      console.log(`[validate-setup] Using observed instance "${observedInstance}" instead of configured "${evolutionInstance}"`);
+      evolutionInstance = observedInstance;
+    }
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {

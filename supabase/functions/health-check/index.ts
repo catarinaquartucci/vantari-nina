@@ -27,6 +27,22 @@ async function getEvolutionConfig(supabase: any) {
   if (!evolutionApiKey) evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY') || null;
   if (!evolutionInstance) evolutionInstance = Deno.env.get('EVOLUTION_INSTANCE') || null;
 
+  // Check last observed instance from recent webhook messages
+  const { data: recentMsg } = await supabase
+    .from('messages')
+    .select('metadata')
+    .eq('from_type', 'user')
+    .not('metadata->evolution_instance', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const observedInstance = recentMsg?.metadata?.evolution_instance || null;
+  if (observedInstance && observedInstance !== evolutionInstance) {
+    console.log(`[health-check] Using observed instance "${observedInstance}" instead of configured "${evolutionInstance}"`);
+    evolutionInstance = observedInstance;
+  }
+
   return { evolutionApiUrl, evolutionApiKey, evolutionInstance };
 }
 
