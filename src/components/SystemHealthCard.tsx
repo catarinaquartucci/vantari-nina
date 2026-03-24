@@ -67,14 +67,24 @@ export const SystemHealthCard: React.FC = () => {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [lastSendError, setLastSendError] = useState<SendQueueError | null>(null);
 
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('validate-setup');
+      const [{ data, error }, { data: sendErrors }] = await Promise.all([
+        supabase.functions.invoke('validate-setup'),
+        supabase
+          .from('send_queue')
+          .select('error_message, created_at, retry_count')
+          .eq('status', 'failed')
+          .order('created_at', { ascending: false })
+          .limit(1)
+      ]);
       
       if (error) throw error;
       setHealthData(data);
+      setLastSendError(sendErrors?.[0] || null);
     } catch (error) {
       console.error('Error fetching health:', error);
     } finally {
