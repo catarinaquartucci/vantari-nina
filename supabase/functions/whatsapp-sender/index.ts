@@ -97,7 +97,11 @@ serve(async (req) => {
 
       for (const item of queueItems) {
         try {
-          await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, evolutionInstance, item);
+          // Resolve instance: prefer per-message metadata, fallback to global config
+          const itemInstance = item.metadata?.evolution_instance || configuredInstance;
+          console.log(`[Sender] Using instance "${itemInstance}" for item ${item.id}`);
+          
+          await sendMessage(supabase, evolutionApiUrl, evolutionApiKey, itemInstance, item);
           
           await supabase
             .from('send_queue')
