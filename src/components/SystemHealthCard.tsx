@@ -35,6 +35,12 @@ interface HealthData {
   message: string;
 }
 
+interface SendQueueError {
+  error_message: string | null;
+  created_at: string;
+  retry_count: number;
+}
+
 const componentIcons: Record<string, React.ReactNode> = {
   identity: <User className="w-4 h-4" />,
   whatsapp: <MessageSquare className="w-4 h-4" />,
