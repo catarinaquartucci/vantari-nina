@@ -943,14 +943,44 @@ async function processQueueItem(
         console.log('[Nina] Audio response queued for sending');
       } else {
         console.log('[Nina] Failed to upload audio, falling back to text');
-        await queueTextResponse(supabase, conversation, message, aiContent, settings, aiSettings, delay, appointmentCreated);
+        await queueTextResponse(
+          supabase,
+          conversation,
+          message,
+          aiContent,
+          settings,
+          aiSettings,
+          delay,
+          appointmentCreated,
+          item.context_data?.phone_number_id || null
+        );
       }
     } else {
       console.log('[Nina] Failed to generate audio, falling back to text');
-      await queueTextResponse(supabase, conversation, message, aiContent, settings, aiSettings, delay, appointmentCreated);
+      await queueTextResponse(
+        supabase,
+        conversation,
+        message,
+        aiContent,
+        settings,
+        aiSettings,
+        delay,
+        appointmentCreated,
+        item.context_data?.phone_number_id || null
+      );
     }
   } else {
-    await queueTextResponse(supabase, conversation, message, aiContent, settings, aiSettings, delay, appointmentCreated);
+    await queueTextResponse(
+      supabase,
+      conversation,
+      message,
+      aiContent,
+      settings,
+      aiSettings,
+      delay,
+      appointmentCreated,
+      item.context_data?.phone_number_id || null
+    );
   }
 
   // Trigger whatsapp-sender
@@ -996,7 +1026,8 @@ async function queueTextResponse(
   settings: any,
   aiSettings: any,
   delay: number,
-  appointmentCreated?: any
+  appointmentCreated?: any,
+  evolutionInstance?: string | null
 ) {
   // Break message into chunks if enabled
   const messageChunks = settings?.message_breaking_enabled 
@@ -1025,7 +1056,7 @@ async function queueTextResponse(
           chunk_index: i,
           total_chunks: messageChunks.length,
           appointment_created: appointmentCreated?.id || null,
-          evolution_instance: item.context_data?.phone_number_id || null
+          evolution_instance: evolutionInstance || null
         }
       });
 
