@@ -1023,7 +1023,8 @@ async function queueTextResponse(
           ai_model: aiSettings.model,
           chunk_index: i,
           total_chunks: messageChunks.length,
-          appointment_created: appointmentCreated?.id || null
+          appointment_created: appointmentCreated?.id || null,
+          evolution_instance: item.context_data?.phone_number_id || null
         }
       });
 
