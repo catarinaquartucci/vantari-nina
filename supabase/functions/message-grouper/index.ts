@@ -96,10 +96,13 @@ serve(async (req) => {
 
         if (!conversation) continue;
 
+        // Use instance from the message's phone_number_id (set by webhook) for media downloads
+        const messageInstance = messages[0].phone_number_id || evolutionInstance;
+        
         // Combine content and handle audio transcription
         const combinedContent = await combineAndTranscribeMessages(
           supabase, messages, dbMessages,
-          evolutionApiUrl, evolutionApiKey, evolutionInstance,
+          evolutionApiUrl, evolutionApiKey, messageInstance,
           lovableApiKey
         );
 
