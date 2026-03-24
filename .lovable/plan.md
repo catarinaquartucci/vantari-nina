@@ -1,60 +1,41 @@
 
-Diagnóstico rápido (com base nos logs e dados atuais):
-- A Nina processou sua mensagem normalmente (webhook → agrupamento → orquestração), mas falhou no envio da resposta.
-- O erro real está no envio: `whatsapp-sender` retorna `Connection Closed`.
-- Há inconsistência de instância:
-  - Mensagem recebida veio da instância `vantari-nina` (log do webhook).
-  - Configuração salva está como `nina-vantari` (tabela `nina_settings`).
-- Por isso:
-  1) a resposta não sai (sender usa instância “fechada”),
-  2) o card da dashboard continua mostrando `estado: close`.
 
-Plano de correção:
+## Problema
 
-1) Sincronizar automaticamente a instância correta ao receber webhook
-- Arquivo: `supabase/functions/whatsapp-webhook/index.ts`
-- Ao receber `body.instance`, se for diferente da instância salva, atualizar `nina_settings.evolution_instance` automaticamente.
-- Resultado: o backend passa a usar a mesma instância que de fato está recebendo mensagens.
+Dois problemas encontrados:
 
-2) Tornar o envio resiliente por conversa (não só por configuração global)
-- Arquivo: `supabase/functions/nina-orchestrator/index.ts`
-  - Incluir `evolution_instance` no `metadata` da `send_queue` usando `item.context_data.phone_number_id`.
-- Arquivo: `supabase/functions/whatsapp-sender/index.ts`
-  - Resolver instância nesta ordem:
-    1. `queueItem.metadata.evolution_instance`
-    2. última instância observada em mensagem do usuário da conversa
-    3. instância configurada
-  - Se receber `Connection Closed`, tentar 1 retry com a instância observada e persistir a correção em `nina_settings`.
+1. **validate-setup**: A verificação do WhatsApp faz uma chamada HTTP à Evolution API (`/instance/connectionState/{instance}`) que está retornando erro (HTTP non-200). A instância observada `vantari-nina` é correta (webhooks funcionam), mas a chamada de status falha — possivelmente por formato de URL, timeout, ou a Evolution API rejeitar a query. Como resultado, o dashboard mostra "Erro ao verificar".
 
-3) Corrigir validação da dashboard para refletir a instância ativa real
-- Arquivos:
-  - `supabase/functions/validate-setup/index.ts`
-  - `supabase/functions/health-check/index.ts`
-- Mesma lógica de resolução de instância ativa (observada > configurada).
-- Se detectar divergência, exibir detalhe informativo (“instância configurada divergente da instância ativa”) e validar a conexão da instância ativa.
-- Resultado: o alerta “estado: close” deixa de aparecer quando a instância ativa está aberta.
+2. **health-check**: Ainda contém verificação do ElevenLabs (linhas 141-145), que deveria ter sido removida.
 
-4) Ajustar pontos auxiliares para evitar regressão
-- Arquivos:
-  - `supabase/functions/test-whatsapp-message/index.ts`
-  - `supabase/functions/message-grouper/index.ts` (para mídia/áudio, usar instância da mensagem quando disponível)
-- Isso evita comportamento inconsistente entre teste manual, transcrição e envio real.
+## Plano
 
-5) Validação final (E2E)
-- Enviar uma nova mensagem para Nina.
-- Confirmar nos logs:
-  - webhook recebeu em `vantari-nina`,
-  - sender enviou sem `Connection Closed`.
-- Confirmar na dashboard:
-  - WhatsApp aparece como conectado (sem `estado: close`).
-- Confirmar no chat:
-  - resposta da Nina chega no WhatsApp.
+### 1. Tornar a verificação do WhatsApp resiliente (`validate-setup/index.ts`)
 
-Arquivos previstos para ajuste:
-- `supabase/functions/whatsapp-webhook/index.ts`
-- `supabase/functions/nina-orchestrator/index.ts`
-- `supabase/functions/whatsapp-sender/index.ts`
+- Se existem mensagens recentes do tipo `user` (indica que o webhook está recebendo mensagens), considerar o WhatsApp como **ok** independentemente do resultado da API de connectionState
+- Mover a chamada à Evolution API para dentro de um try/catch com timeout de 5 segundos
+- Se a API falhar mas houver mensagens recentes (últimas 24h), status = `ok` com mensagem "WhatsApp ativo (mensagens recebidas recentemente)"
+- Se não houver mensagens recentes E a API falhar, aí sim mostrar `warning`
+
+Lógica:
+```
+1. Verificar se há mensagens de usuário nas últimas 24h
+2. Se sim → WhatsApp = ok (independente da API de status)
+3. Se não → tentar API de connectionState
+   - Se ok e state=open → ok
+   - Se falhar → warning (não error)
+```
+
+### 2. Mesma lógica no `health-check/index.ts`
+
+- Aplicar a mesma verificação resiliente
+- **Remover bloco ElevenLabs** (linhas 141-145) que ainda está presente
+
+### 3. Adicionar timeout às chamadas fetch
+
+Ambas as funções fazem fetch sem timeout. Adicionar `AbortController` com 5s de timeout para evitar que a função trave.
+
+### Arquivos alterados
 - `supabase/functions/validate-setup/index.ts`
 - `supabase/functions/health-check/index.ts`
-- `supabase/functions/test-whatsapp-message/index.ts`
-- `supabase/functions/message-grouper/index.ts`
+
