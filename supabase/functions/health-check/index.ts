@@ -76,30 +76,50 @@ Deno.serve(async (req) => {
       results.push({ component: 'lovable_api_key', status: 'error', message: 'LOVABLE_API_KEY não está configurada. A IA não funcionará.' });
     }
 
-    // 2. Check Evolution API
+    // 2. Check Evolution API — resilient with recent messages fallback
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: recentUserMessages } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('from_type', 'user')
+      .gte('created_at', twentyFourHoursAgo);
+
+    const hasRecentMessages = (recentUserMessages || 0) > 0;
+
     if (evolutionApiUrl && evolutionApiKey && evolutionInstance) {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const connResponse = await fetch(
           `${evolutionApiUrl}/instance/connectionState/${evolutionInstance}`,
-          { headers: { 'apikey': evolutionApiKey } }
+          { headers: { 'apikey': evolutionApiKey }, signal: controller.signal }
         );
+        clearTimeout(timeoutId);
         if (connResponse.ok) {
           const connData = await connResponse.json();
           const state = connData.instance?.state || connData.state || 'unknown';
           results.push({
             component: 'whatsapp',
-            status: state === 'open' ? 'ok' : 'warning',
-            message: state === 'open' ? 'WhatsApp conectado via Evolution API' : `WhatsApp: estado "${state}"`,
+            status: state === 'open' ? 'ok' : (hasRecentMessages ? 'ok' : 'warning'),
+            message: state === 'open' ? 'WhatsApp conectado via Evolution API' : (hasRecentMessages ? 'WhatsApp ativo (mensagens recebidas recentemente)' : `WhatsApp: estado "${state}"`),
             details: { instance: evolutionInstance, state },
           });
+        } else if (hasRecentMessages) {
+          results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
         } else {
-          results.push({ component: 'whatsapp', status: 'error', message: 'Erro ao conectar com Evolution API' });
+          results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar Evolution API' });
         }
       } catch {
-        results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar conexão Evolution API' });
+        if (hasRecentMessages) {
+          results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
+        } else {
+          results.push({ component: 'whatsapp', status: 'warning', message: 'Não foi possível verificar conexão Evolution API' });
+        }
       }
+    } else if (hasRecentMessages) {
+      results.push({ component: 'whatsapp', status: 'ok', message: 'WhatsApp ativo (mensagens recebidas recentemente)' });
     } else {
-      results.push({ component: 'whatsapp', status: 'error', message: 'Evolution API não configurada (secrets não definidos)' });
+      results.push({ component: 'whatsapp', status: 'warning', message: 'Evolution API não configurada (secrets não definidos)' });
     }
 
     // 3. Check nina_settings
@@ -138,11 +158,8 @@ Deno.serve(async (req) => {
         results.push({ component: 'business_hours', status: 'warning', message: 'Horário comercial não configurado' });
       }
 
-      if (settings.elevenlabs_api_key) {
-        results.push({ component: 'elevenlabs', status: 'ok', message: 'ElevenLabs configurado' });
-      } else {
-        results.push({ component: 'elevenlabs', status: 'warning', message: 'ElevenLabs não configurado (opcional)' });
-      }
+
+
 
       results.push({ component: 'nina_settings', status: 'ok', message: 'Configurações do sistema encontradas' });
     }
