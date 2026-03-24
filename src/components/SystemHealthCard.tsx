@@ -35,6 +35,12 @@ interface HealthData {
   message: string;
 }
 
+interface SendQueueError {
+  error_message: string | null;
+  created_at: string;
+  retry_count: number;
+}
+
 const componentIcons: Record<string, React.ReactNode> = {
   identity: <User className="w-4 h-4" />,
   whatsapp: <MessageSquare className="w-4 h-4" />,
@@ -61,14 +67,24 @@ export const SystemHealthCard: React.FC = () => {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [lastSendError, setLastSendError] = useState<SendQueueError | null>(null);
 
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('validate-setup');
+      const [{ data, error }, { data: sendErrors }] = await Promise.all([
+        supabase.functions.invoke('validate-setup'),
+        supabase
+          .from('send_queue')
+          .select('error_message, created_at, retry_count')
+          .eq('status', 'failed')
+          .order('created_at', { ascending: false })
+          .limit(1)
+      ]);
       
       if (error) throw error;
       setHealthData(data);
+      setLastSendError(sendErrors?.[0] || null);
     } catch (error) {
       console.error('Error fetching health:', error);
     } finally {
@@ -212,6 +228,22 @@ export const SystemHealthCard: React.FC = () => {
               </div>
             </motion.div>
           ))}
+
+          {lastSendError && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="col-span-2 mt-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20"
+            >
+              <p className="text-xs font-medium text-red-400 mb-1">Último erro de envio:</p>
+              <p className="text-[11px] text-red-300/80 font-mono break-all">
+                {lastSendError.error_message || 'Erro desconhecido'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                {new Date(lastSendError.created_at).toLocaleString('pt-BR')} • {lastSendError.retry_count} tentativas
+              </p>
+            </motion.div>
+          )}
         </motion.div>
       )}
     </motion.div>

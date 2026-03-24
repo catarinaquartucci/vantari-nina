@@ -306,8 +306,9 @@ async function sendMessage(
       }
 
       if (!response.ok) {
-        const errMsg = responseData?.message || responseData?.error || responseData?.raw || `HTTP ${response.status}`;
+      const errMsg = responseData?.message || responseData?.error || responseData?.raw || `HTTP ${response.status}`;
         console.warn(`[Sender] Variation "${variation.label}" failed (${response.status}): ${errMsg}`);
+        console.warn(`[Sender] Full error response body: ${responseText.substring(0, 500)}`);
         lastError = new Error(errMsg);
 
         // For 5xx errors, try next payload variation

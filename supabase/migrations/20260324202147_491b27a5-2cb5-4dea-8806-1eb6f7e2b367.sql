@@ -1,0 +1,1 @@
+UPDATE nina_settings SET evolution_instance = 'nina-vantari', updated_at = now() WHERE evolution_instance = 'vantari-nina';
