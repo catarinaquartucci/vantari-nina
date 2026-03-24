@@ -38,7 +38,7 @@ serve(async (req) => {
       console.log('[Webhook] Received Evolution payload:', JSON.stringify(body, null, 2));
 
       const event = body.event;
-      const instance = body.instance || evolutionInstanceName || 'vantari-nina';
+      const instance = body.instance || evolutionInstanceName || 'nina-vantari';
 
       // Instance mismatch: only auto-fill if empty, don't overwrite an existing configured instance
       if (body.instance && evoSettings?.id) {
