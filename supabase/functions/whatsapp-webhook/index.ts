@@ -118,9 +118,21 @@ serve(async (req) => {
         });
       }
 
-      // 2. Extract sender phone number correctly (remoteJid for individual chats)
-      const sender = remoteJid || body.sender || '';
-      const phoneNumber = sender.replace('@s.whatsapp.net', '').replace('@g.us', '');
+      // 2. Extract sender phone number — prefer body.sender for LID format
+      const remoteJidValue = remoteJid;
+      let sender = '';
+
+      if (remoteJidValue.includes('@lid')) {
+        // LID format: use body.sender which has the real phone@s.whatsapp.net
+        sender = body.sender || remoteJidValue;
+      } else {
+        sender = remoteJidValue || body.sender || '';
+      }
+
+      const phoneNumber = sender
+        .replace('@s.whatsapp.net', '')
+        .replace('@g.us', '')
+        .replace('@lid', '');
       
       if (!phoneNumber || phoneNumber.includes('@')) {
         console.log('[Webhook] Invalid sender, ignoring:', sender);
