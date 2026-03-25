@@ -12,6 +12,20 @@ const corsHeaders = {
 
 const GROUPING_DELAY_MS = 5000; // 5 seconds
 
+function extractCallName(pushName: string): string {
+  // Remove emojis (broad Unicode ranges)
+  let cleaned = pushName.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{2700}-\u{27BF}\u{2B50}\u{2B55}\u{231A}-\u{23FA}\u{25AA}-\u{25FE}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{3030}\u{303D}\u{3297}\u{3299}\u{FE0F}\u{200B}\u{2764}\u{2716}\u{2728}\u{269B}-\u{269C}\u{2694}-\u{2696}\u{26A0}-\u{26A1}\u{26BD}-\u{26BE}]/gu, '');
+  // Remove common honorifics (PT-BR)
+  cleaned = cleaned.replace(/\b(Dr\.?|Dra\.?|Prof\.?|Profa\.?|Sr\.?|Sra\.?|Eng\.?|Adv\.?)\b/gi, '');
+  // Remove decorative special chars
+  cleaned = cleaned.replace(/[|_~*✨💎🔥❤️⚜️☀️🌟💫⭐️🏆👑💜💙💚💛🤍🖤🩷🩵🩶♡☆★●○◆◇▪▫]/gu, '');
+  // Remove remaining non-letter/non-space chars that aren't accented letters
+  cleaned = cleaned.replace(/[^\p{L}\p{M}\s]/gu, '');
+  // Trim and split
+  const parts = cleaned.trim().split(/\s+/).filter(p => p.length > 1);
+  return parts[0] || cleaned.trim().split(/\s+/)[0] || 'Cliente';
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -195,7 +209,7 @@ serve(async (req) => {
             phone_number: phoneNumber,
             whatsapp_id: whatsappIdForContact,
             name: contactName,
-            call_name: contactName?.split(' ')[0] || null,
+            call_name: contactName ? extractCallName(contactName) : null,
             user_id: null
           })
           .select()
@@ -214,7 +228,7 @@ serve(async (req) => {
         // Always update name/call_name from pushName if available and different
         if (contactName && contact.name !== contactName) {
           updates.name = contactName;
-          updates.call_name = contactName.split(' ')[0];
+          updates.call_name = extractCallName(contactName);
         }
         // Update whatsapp_id if it changed (e.g. LID migration)
         if (whatsappIdForContact && contact.whatsapp_id !== whatsappIdForContact) {
