@@ -209,7 +209,7 @@ serve(async (req) => {
             phone_number: phoneNumber,
             whatsapp_id: whatsappIdForContact,
             name: contactName,
-            call_name: contactName?.split(' ')[0] || null,
+            call_name: contactName ? extractCallName(contactName) : null,
             user_id: null
           })
           .select()
