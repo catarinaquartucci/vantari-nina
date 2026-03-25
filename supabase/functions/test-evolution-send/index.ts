@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const WEBHOOK_URL = 'https://bxormmkqpkdzzwyttowb.supabase.co/functions/v1/whatsapp-webhook';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -85,13 +87,74 @@ serve(async (req) => {
         result.instanceInfo = { error: String(e) };
       }
 
+      // 3. Check webhook configuration
+      try {
+        const webhookResp = await fetch(`${apiUrl}/webhook/find/${inst}`, {
+          headers: { 'apikey': apiKey },
+        });
+        const webhookText = await webhookResp.text();
+        let webhookConfig: any = null;
+        try { webhookConfig = JSON.parse(webhookText); } catch { webhookConfig = { raw: webhookText.substring(0, 500) }; }
+        result.webhookConfig = webhookConfig;
+
+        // Check if webhook URL is correctly set
+        const currentUrl = webhookConfig?.url || webhookConfig?.webhook?.url || null;
+        const isEnabled = webhookConfig?.enabled ?? webhookConfig?.webhook?.enabled ?? false;
+        result.webhookStatus = { currentUrl, isEnabled, expectedUrl: WEBHOOK_URL };
+
+        const needsFix = !currentUrl || currentUrl !== WEBHOOK_URL || !isEnabled;
+        result.webhookNeedsFix = needsFix;
+
+        // Auto-fix webhook if needed
+        if (needsFix) {
+          console.log(`[Diag] Webhook needs fix for instance "${inst}". Current: ${currentUrl}, Expected: ${WEBHOOK_URL}`);
+          try {
+            const setResp = await fetch(`${apiUrl}/webhook/set/${inst}`, {
+              method: 'PUT',
+              headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                url: WEBHOOK_URL,
+                enabled: true,
+                webhookByEvents: false,
+                events: [
+                  "messages.upsert",
+                  "messages.update",
+                  "messages.delete",
+                  "send.message",
+                  "connection.update"
+                ]
+              }),
+            });
+            const setText = await setResp.text();
+            let setResult: any;
+            try { setResult = JSON.parse(setText); } catch { setResult = { raw: setText.substring(0, 500), status: setResp.status }; }
+            result.webhookFixResult = { success: setResp.ok, status: setResp.status, data: setResult };
+            console.log(`[Diag] Webhook fix result for "${inst}":`, JSON.stringify(result.webhookFixResult));
+          } catch (e) {
+            result.webhookFixResult = { success: false, error: String(e) };
+          }
+        } else {
+          result.webhookFixResult = { success: true, message: 'Already configured correctly' };
+        }
+      } catch (e) {
+        result.webhookConfig = { error: String(e) };
+      }
+
       results.push(result);
     }
 
-    // 3. Recent send_queue status
+    // 4. Recent send_queue status
     const { data: recentQueue } = await supabase
       .from('send_queue')
       .select('id, status, error_message, retry_count, created_at, metadata')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // 5. Recent incoming messages
+    const { data: recentIncoming } = await supabase
+      .from('messages')
+      .select('id, content, from_type, status, created_at')
+      .eq('from_type', 'user')
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -99,6 +162,7 @@ serve(async (req) => {
       config: { apiUrl, instance, allInstances },
       instanceResults: results,
       recentSendQueue: recentQueue,
+      recentIncomingMessages: recentIncoming,
     }, null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
