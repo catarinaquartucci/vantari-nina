@@ -228,7 +228,7 @@ serve(async (req) => {
         // Always update name/call_name from pushName if available and different
         if (contactName && contact.name !== contactName) {
           updates.name = contactName;
-          updates.call_name = contactName.split(' ')[0];
+          updates.call_name = extractCallName(contactName);
         }
         // Update whatsapp_id if it changed (e.g. LID migration)
         if (whatsappIdForContact && contact.whatsapp_id !== whatsappIdForContact) {
