@@ -271,7 +271,9 @@ async function sendMessage(
   if (!contact) throw new Error('Contact not found');
 
   const rawRecipient = contact.whatsapp_id || contact.phone_number;
-  const sanitizedNumber = rawRecipient.replace(/[^0-9]/g, '');
+  const isLidContact = rawRecipient.includes('@lid');
+  // For LID contacts, keep the full JID; for regular contacts, sanitize to digits
+  const sanitizedNumber = isLidContact ? rawRecipient : rawRecipient.replace(/[^0-9]/g, '');
 
   // Build payload variations for text messages to handle different Evolution API versions
   const payloadVariations = buildPayloadVariations(apiUrl, instance, queueItem, sanitizedNumber, rawRecipient);
