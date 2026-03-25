@@ -211,9 +211,14 @@ serve(async (req) => {
         console.log('[Webhook] Created new contact:', contact.id);
       } else {
         const updates: any = { last_activity: new Date().toISOString() };
-        if (contactName && !contact.name) {
+        // Always update name/call_name from pushName if available and different
+        if (contactName && contact.name !== contactName) {
           updates.name = contactName;
           updates.call_name = contactName.split(' ')[0];
+        }
+        // Update whatsapp_id if it changed (e.g. LID migration)
+        if (whatsappIdForContact && contact.whatsapp_id !== whatsappIdForContact) {
+          updates.whatsapp_id = whatsappIdForContact;
         }
         await supabase.from('contacts').update(updates).eq('id', contact.id);
       }
