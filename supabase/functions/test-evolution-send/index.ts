@@ -54,17 +54,19 @@ serve(async (req) => {
         method: 'POST',
         headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: WEBHOOK_URL,
-          enabled: true,
-          webhookByEvents: false,
-          webhookBase64: false,
-          events: [
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-            "MESSAGES_DELETE",
-            "SEND_MESSAGE",
-            "CONNECTION_UPDATE"
-          ]
+          webhook: {
+            url: WEBHOOK_URL,
+            enabled: true,
+            webhookByEvents: false,
+            webhookBase64: false,
+            events: [
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "MESSAGES_DELETE",
+              "SEND_MESSAGE",
+              "CONNECTION_UPDATE"
+            ]
+          }
         }),
       });
       const setText = await setResp.text();
