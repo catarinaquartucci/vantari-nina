@@ -160,20 +160,54 @@ serve(async (req) => {
       }
 
       const isLid = sender.includes('@lid');
-      const phoneNumber = sender
+      const lidNumber = sender
         .replace('@s.whatsapp.net', '')
         .replace('@g.us', '')
         .replace('@lid', '');
       
       // For LID contacts, store the full remoteJid so the sender can reply correctly
-      const whatsappIdForContact = isLid ? remoteJidValue : phoneNumber;
+      const whatsappIdForContact = isLid ? remoteJidValue : lidNumber;
       
-      if (!phoneNumber || phoneNumber.includes('@')) {
+      if (!lidNumber || lidNumber.includes('@')) {
         console.log('[Webhook] Invalid sender, ignoring:', sender);
         return new Response(JSON.stringify({ status: 'ignored' }), { 
           status: 200, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
+      }
+
+      // Resolve real phone number for LID contacts via Evolution API
+      let phoneNumber = lidNumber;
+      if (isLid) {
+        try {
+          const apiUrl = evoSettings?.evolution_api_url || Deno.env.get('EVOLUTION_API_URL');
+          const apiKey = evoSettings?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY');
+          
+          if (apiUrl && apiKey) {
+            console.log('[Webhook] Resolving LID to real phone via Evolution API:', remoteJidValue);
+            const findResp = await fetch(
+              `${apiUrl}/chat/findContacts/${instance}`,
+              {
+                method: 'POST',
+                headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ where: { id: remoteJidValue } })
+              }
+            );
+            const foundContacts = await findResp.json();
+            console.log('[Webhook] findContacts response:', JSON.stringify(foundContacts));
+            
+            // Extract real phone number from response
+            const resolvedId = foundContacts?.[0]?.id || foundContacts?.[0]?.jid;
+            if (resolvedId && resolvedId.includes('@s.whatsapp.net')) {
+              phoneNumber = resolvedId.replace('@s.whatsapp.net', '');
+              console.log('[Webhook] Resolved LID to real phone:', phoneNumber);
+            } else {
+              console.log('[Webhook] Could not resolve LID, using raw number:', lidNumber);
+            }
+          }
+        } catch (e) {
+          console.log('[Webhook] Error resolving LID phone:', e);
+        }
       }
       
       console.log('[Webhook] Sender:', phoneNumber, isLid ? `(LID: ${remoteJidValue})` : '(standard)');
