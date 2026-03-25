@@ -193,7 +193,7 @@ serve(async (req) => {
           .from('contacts')
           .insert({
             phone_number: phoneNumber,
-            whatsapp_id: phoneNumber,
+            whatsapp_id: whatsappIdForContact,
             name: contactName,
             call_name: contactName?.split(' ')[0] || null,
             user_id: null
