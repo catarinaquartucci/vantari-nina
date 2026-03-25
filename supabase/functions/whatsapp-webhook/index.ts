@@ -138,10 +138,11 @@ serve(async (req) => {
       let sender = '';
 
       if (remoteJidValue.includes('@lid')) {
-        // LID format: use body.sender which has the real phone@s.whatsapp.net
-        sender = body.sender || remoteJidValue;
+        // LID format: use the LID itself as identifier
+        // body.sender is the INSTANCE's own number, NOT the contact's number
+        sender = remoteJidValue;
       } else {
-        sender = remoteJidValue || body.sender || '';
+        sender = remoteJidValue || '';
       }
 
       const phoneNumber = sender
