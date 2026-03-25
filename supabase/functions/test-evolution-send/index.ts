@@ -51,7 +51,7 @@ serve(async (req) => {
     // 3. FORCE re-set webhook (always, even if it looks correct)
     try {
       const setResp = await fetch(`${apiUrl}/webhook/set/${instance}`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: WEBHOOK_URL,
