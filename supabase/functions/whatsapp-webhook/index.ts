@@ -259,10 +259,12 @@ serve(async (req) => {
       console.log('[Webhook] Owner:', ownerId || 'none');
 
       // 1. Get or create contact
+      // Search by phone_number OR whatsapp_id (for LID contacts)
       let { data: contact } = await supabase
         .from('contacts')
         .select('*')
-        .eq('phone_number', phoneNumber)
+        .or(`phone_number.eq.${phoneNumber},whatsapp_id.eq.${whatsappIdForContact}`)
+        .limit(1)
         .maybeSingle();
 
       if (!contact) {
