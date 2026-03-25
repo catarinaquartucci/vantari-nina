@@ -138,16 +138,21 @@ serve(async (req) => {
       let sender = '';
 
       if (remoteJidValue.includes('@lid')) {
-        // LID format: use body.sender which has the real phone@s.whatsapp.net
-        sender = body.sender || remoteJidValue;
+        // LID format: use the LID itself as identifier
+        // body.sender is the INSTANCE's own number, NOT the contact's number
+        sender = remoteJidValue;
       } else {
-        sender = remoteJidValue || body.sender || '';
+        sender = remoteJidValue || '';
       }
 
+      const isLid = sender.includes('@lid');
       const phoneNumber = sender
         .replace('@s.whatsapp.net', '')
         .replace('@g.us', '')
         .replace('@lid', '');
+      
+      // For LID contacts, store the full remoteJid so the sender can reply correctly
+      const whatsappIdForContact = isLid ? remoteJidValue : phoneNumber;
       
       if (!phoneNumber || phoneNumber.includes('@')) {
         console.log('[Webhook] Invalid sender, ignoring:', sender);
@@ -156,6 +161,8 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
       }
+      
+      console.log('[Webhook] Sender:', phoneNumber, isLid ? `(LID: ${remoteJidValue})` : '(standard)');
 
       const contactName = data.pushName || null;
       const whatsappMessageId = data.key?.id;
@@ -186,7 +193,7 @@ serve(async (req) => {
           .from('contacts')
           .insert({
             phone_number: phoneNumber,
-            whatsapp_id: phoneNumber,
+            whatsapp_id: whatsappIdForContact,
             name: contactName,
             call_name: contactName?.split(' ')[0] || null,
             user_id: null
