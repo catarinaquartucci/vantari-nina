@@ -1,37 +1,46 @@
 
 
-## Diagnóstico e Correção: Mensagem de teste não chega ao webhook
+## Correção: Extrair primeiro nome real do pushName (ignorando emojis e títulos)
 
-### Problema identificado
+### Problema
 
-A sua mensagem de teste **nunca chegou ao webhook**. O último evento registrado foi às 13:58 UTC. Isso indica que a Evolution API não está encaminhando mensagens novas para a URL do webhook (`https://bxormmkqpkdzzwyttowb.supabase.co/functions/v1/whatsapp-webhook`).
+O `call_name` é extraído com `pushName.split(' ')[0]`, que para nomes como "⚜️ Dra. Camila Vianna ⚜️" retorna "⚜️" — um emoji. A Nina então chama a pessoa por emoji em vez do nome real.
 
-**Causa provável**: ao reconectar a instância na Evolution/Cloudfy, a URL do webhook não foi reconfigurada automaticamente.
+### Solução
 
-### Plano
+**1. Criar função de extração inteligente de `call_name` no webhook**
 
-**1. Adicionar verificação de webhook ao diagnóstico (`test-evolution-send`)**
-- Consultar a API da Evolution para verificar a configuração do webhook da instância (`/webhook/find/{instance}`)
-- Se o webhook não estiver configurado, tentar configurá-lo automaticamente via API (`/webhook/set/{instance}`)
-- Retornar o status da configuração do webhook no resultado
+Adicionar uma função `extractCallName(pushName)` que:
+- Remove emojis (regex Unicode)
+- Remove títulos/honoríficos comuns (Dr., Dra., Prof., Sr., Sra., etc.)
+- Remove caracteres especiais (|, -, _, etc.)
+- Pega o primeiro token restante como `call_name`
+- Fallback: se nada sobrar, usa o pushName original sem emojis
 
-**2. Reduzir delay de agrupamento para primeiro contato**
-- Atualmente o `GROUPING_DELAY_MS` é 10 segundos — para a primeira mensagem de um contato novo, isso é desnecessário
-- Reduzir para 5 segundos para melhorar tempo de resposta no primeiro contato
+**2. Aplicar nos dois pontos do webhook**
+- Criação de novo contato (linha 198)
+- Atualização de contato existente (linha 217)
 
-**3. Executar diagnóstico automaticamente após deploy**
-- Rodar o `test-evolution-send` atualizado para verificar e corrigir a config do webhook
+**3. Corrigir contato existente da "Dra. Camila"**
+- UPDATE via insert tool para corrigir `call_name` para "Camila"
 
 ### Detalhes técnicos
 
-**Arquivo: `supabase/functions/test-evolution-send/index.ts`**
-- Adicionar chamada GET a `/webhook/find/{instance}` para verificar URL configurada
-- Se URL incorreta ou ausente, chamar PUT `/webhook/set/{instance}` com:
-  - `url`: `https://bxormmkqpkdzzwyttowb.supabase.co/functions/v1/whatsapp-webhook`
-  - `events`: `["messages.upsert", "messages.update"]`
-  - `enabled`: `true`
-- Retornar resultado da verificação/correção
-
 **Arquivo: `supabase/functions/whatsapp-webhook/index.ts`**
-- Reduzir `GROUPING_DELAY_MS` de 10000 para 5000
+
+```typescript
+function extractCallName(pushName: string): string {
+  // Remove emojis
+  let cleaned = pushName.replace(/[\u{1F000}-\u{1FFFF}|\u{2600}-\u{27BF}|\u{FE00}-\u{FEFF}|\u{200D}|\u{20E3}|\u{E0020}-\u{E007F}|\u{2700}-\u{27BF}|\u{2B50}|\u{2B55}|\u{231A}-\u{23FA}|\u{25AA}-\u{25FE}|\u{2934}-\u{2935}|\u{2B05}-\u{2B07}|\u{3030}|\u{303D}|\u{3297}|\u{3299}|\u{FE0F}|\u{200B}]/gu, '');
+  // Remove common honorifics (PT-BR)
+  cleaned = cleaned.replace(/\b(Dr\.?|Dra\.?|Prof\.?|Sr\.?|Sra\.?|Eng\.?)\b/gi, '');
+  // Remove special chars used as decoration
+  cleaned = cleaned.replace(/[|_~*⚜️✨💎🔥❤️]/g, '');
+  // Trim and split
+  const parts = cleaned.trim().split(/\s+/).filter(p => p.length > 1);
+  return parts[0] || pushName.trim().split(/\s+/)[0] || 'Cliente';
+}
+```
+
+Substituir `contactName?.split(' ')[0]` por `extractCallName(contactName)` nos dois locais.
 
