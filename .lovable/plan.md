@@ -1,48 +1,19 @@
 
-Objetivo: corrigir a captura/salvamento de telefone para nunca gravar IDs internos (ex: `LID-...`) e sempre persistir número internacional numérico.
 
-1) Onde está hoje a extração e o salvamento (diagnóstico)
-- Arquivo: `supabase/functions/whatsapp-webhook/index.ts`
-- Extração atual do “telefone”: bloco de `remoteJid` + `lidNumber` (aprox. linhas 150–180).
-- Resolução de LID: `findContacts` / `findChats` (aprox. linhas 184–233).
-- Problema principal: fallback atual grava `LID-${lidNumber}` (aprox. linhas 235–240).
-- Salvamento no banco: `contacts.insert({ phone_number: phoneNumber ... })` e busca `.or(phone_number..., whatsapp_id...)` (aprox. linhas 261–303).
+## Atualizar telefone da Camila e manter Sônia para resolução automática
 
-2) Correção no webhook (fonte da falha)
-- Substituir a lógica atual por um pipeline de resolução:
-  - `normalizeDigits(value)` → mantém apenas dígitos.
-  - `isValidIntlPhone(phone)` → validar formato internacional (DDI+DDD+número), para este projeto: `^55\d{10,11}$`.
-  - `extractPhoneFromJid(jid)` → extrair de `@s.whatsapp.net`.
-  - `resolveRealPhoneFromPayload(body, data)` → tentar campos alternativos antes de API (`remoteJidAlt`, `sender`, `participant`, etc., quando presentes).
-  - `resolveRealPhoneFromEvolution(...)` → manter `findContacts` e fallback `findChats`, mas parseando mais campos de resposta (não só `id/jid`).
-- Remover totalmente o fallback `LID-...`.
-- Regra final: só continuar fluxo de criação/atualização se `phone_number` passar na validação.
+### Situação atual
 
-3) Regras de persistência para não salvar dado inválido
-- Buscar contato por `whatsapp_id` primeiro (quando `@lid`), depois por `phone_number`.
-- Se contato existente por `whatsapp_id` tiver telefone inválido e o novo payload trouxer telefone válido:
-  - atualizar para o número válido.
-  - se já existir outro contato com esse número, mesclar registros relacionados (conversas/deals/agendamentos/documentos) e eliminar duplicado.
-- Se não houver número válido resolvido:
-  - não gravar/atualizar `phone_number` com LID ou valor suspeito.
-  - registrar ocorrência para diagnóstico e retry controlado (sem poluir `contacts` com dado incorreto).
+| Contato | phone_number (atual) | whatsapp_id | Número real |
+|---|---|---|---|
+| Camila Vianna | `41841655308338` (LID) | `41841655308338@lid` | `5512982695593` |
+| Sônia | `31087141114081` (LID) | `31087141114081@lid` | Desconhecido |
 
-4) Blindagem no banco (garantia “nunca salvar inválido”)
-- Criar migration com trigger de validação em `contacts`:
-  - em INSERT e em UPDATE de `phone_number`, rejeitar valores fora do padrão internacional numérico.
-  - bloquear explicitamente valores com prefixo `LID-` ou caracteres não numéricos.
-- Isso protege todas as rotas de escrita (webhook e UI).
+Não existe outro registro com `5512982695593`, então basta atualizar o `phone_number` da Camila.
 
-5) Limpeza de dados já afetados
-- Migration para saneamento dos contatos atuais:
-  - corrigir formatos com máscara/caracteres para somente dígitos.
-  - converter locais sem DDI para formato internacional quando inequívoco.
-  - tentar resolver/mesclar contatos com `whatsapp_id @lid` que já tenham correspondente válido.
-  - remover duplicados após remapeamento de referências.
+### Ações
 
-6) Validação pós-implementação (E2E)
-- Testar 3 cenários:
-  - mensagem com `@s.whatsapp.net` (salva direto em `55...`).
-  - mensagem com `@lid` resolvível (salva em `55...`, sem `LID-`).
-  - `@lid` não resolvível naquele momento (não grava telefone inválido).
-- Conferir no banco: zero contatos novos com `phone_number` não numérico, com `LID-`, ou fora do padrão internacional.
+1. **Atualizar Camila**: Usar INSERT tool (UPDATE) para setar `phone_number = '5512982695593'` no registro `735fdb7e-...`. O `whatsapp_id` permanece `41841655308338@lid` para que o envio de mensagens continue funcionando.
+
+2. **Sônia**: Sem ação agora. Quando ela enviar a próxima mensagem, o webhook (já corrigido) tentará resolver o LID via Evolution API e atualizará automaticamente o `phone_number` com o número real.
+
