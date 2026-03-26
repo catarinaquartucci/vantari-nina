@@ -482,11 +482,11 @@ serve(async (req) => {
         .update({ process_after: processAfter })
         .eq('processed', false)
         .eq('phone_number_id', instance)
-        .filter('message_data->>from', 'eq', phoneNumber);
+        .filter('message_data->>from', 'eq', contact.phone_number);
 
       // Insert into queue
       const evolutionMessageData = {
-        from: phoneNumber,
+        from: contact.phone_number,
         id: whatsappMessageId,
         timestamp: data.messageTimestamp || Math.floor(Date.now() / 1000).toString(),
         type: messageType,
@@ -505,7 +505,7 @@ serve(async (req) => {
           phone_number_id: instance,
           message_id: dbMessage.id,
           message_data: evolutionMessageData,
-          contacts_data: { wa_id: phoneNumber, profile: { name: contactName } },
+          contacts_data: { wa_id: contact.phone_number, profile: { name: contactName } },
           process_after: processAfter
         });
 
