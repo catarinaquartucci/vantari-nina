@@ -166,28 +166,26 @@ serve(async (req) => {
         });
       }
 
-      // 2. Extract sender phone number — prefer body.sender for LID format
+      // 2. Extract sender info
       const remoteJidValue = remoteJid;
       let sender = '';
 
       if (remoteJidValue.includes('@lid')) {
-        // LID format: use the LID itself as identifier
-        // body.sender is the INSTANCE's own number, NOT the contact's number
         sender = remoteJidValue;
       } else {
         sender = remoteJidValue || '';
       }
 
       const isLid = sender.includes('@lid');
-      const lidNumber = sender
+      const rawId = sender
         .replace('@s.whatsapp.net', '')
         .replace('@g.us', '')
         .replace('@lid', '');
       
       // For LID contacts, store the full remoteJid so the sender can reply correctly
-      const whatsappIdForContact = isLid ? remoteJidValue : lidNumber;
+      const whatsappIdForContact = isLid ? remoteJidValue : rawId;
       
-      if (!lidNumber || lidNumber.includes('@')) {
+      if (!rawId || rawId.includes('@')) {
         console.log('[Webhook] Invalid sender, ignoring:', sender);
         return new Response(JSON.stringify({ status: 'ignored' }), { 
           status: 200, 
@@ -195,15 +193,22 @@ serve(async (req) => {
         });
       }
 
-      // Resolve real phone number for LID contacts via Evolution API
-      let phoneNumber = lidNumber;
+      // ── Resolve real phone number ──
+      let phoneNumber: string | null = null;
       const apiUrl = evoSettings?.evolution_api_url || Deno.env.get('EVOLUTION_API_URL');
       const apiKey = evoSettings?.evolution_api_key || Deno.env.get('EVOLUTION_API_KEY');
-      
+
+      // For standard @s.whatsapp.net, extract directly
+      if (!isLid) {
+        const extracted = extractPhoneFromJid(remoteJidValue);
+        phoneNumber = extracted || (isValidIntlPhone(normalizeDigits(rawId)) ? normalizeDigits(rawId) : null);
+      }
+
+      // For LID contacts, try Evolution API resolution
       if (isLid && apiUrl && apiKey) {
+        // Attempt 1: findContacts
         try {
-          // Attempt 1: findContacts
-          console.log('[Webhook] Resolving LID to real phone via findContacts:', remoteJidValue);
+          console.log('[Webhook] Resolving LID via findContacts:', remoteJidValue);
           const findResp = await fetch(
             `${apiUrl}/chat/findContacts/${instance}`,
             {
@@ -215,17 +220,18 @@ serve(async (req) => {
           const foundContacts = await findResp.json();
           console.log('[Webhook] findContacts response:', JSON.stringify(foundContacts));
           
-          const resolvedId = foundContacts?.[0]?.id || foundContacts?.[0]?.jid;
-          if (resolvedId && resolvedId.includes('@s.whatsapp.net')) {
-            phoneNumber = resolvedId.replace('@s.whatsapp.net', '');
-            console.log('[Webhook] Resolved LID via findContacts:', phoneNumber);
+          // Try multiple fields in response
+          for (const c of (Array.isArray(foundContacts) ? foundContacts : [])) {
+            const candidate = extractPhoneFromJid(c?.id) || extractPhoneFromJid(c?.jid) || extractPhoneFromJid(c?.wuid);
+            if (candidate) { phoneNumber = candidate; break; }
           }
+          if (phoneNumber) console.log('[Webhook] Resolved LID via findContacts:', phoneNumber);
         } catch (e) {
           console.log('[Webhook] findContacts error:', e);
         }
 
-        // Attempt 2: findChats fallback if findContacts didn't resolve
-        if (phoneNumber === lidNumber) {
+        // Attempt 2: findChats fallback
+        if (!phoneNumber) {
           try {
             console.log('[Webhook] Trying findChats fallback for LID:', remoteJidValue);
             const chatsResp = await fetch(
@@ -239,26 +245,31 @@ serve(async (req) => {
             const chats = await chatsResp.json();
             console.log('[Webhook] findChats response:', JSON.stringify(chats));
             
-            const chatContact = chats?.[0]?.contact;
-            const chatId = chatContact?.id || chatContact?.jid;
-            if (chatId && chatId.includes('@s.whatsapp.net')) {
-              phoneNumber = chatId.replace('@s.whatsapp.net', '');
-              console.log('[Webhook] Resolved LID via findChats:', phoneNumber);
+            for (const chat of (Array.isArray(chats) ? chats : [])) {
+              const contact = chat?.contact || chat;
+              const candidate = extractPhoneFromJid(contact?.id) || extractPhoneFromJid(contact?.jid);
+              if (candidate) { phoneNumber = candidate; break; }
             }
+            if (phoneNumber) console.log('[Webhook] Resolved LID via findChats:', phoneNumber);
           } catch (e) {
             console.log('[Webhook] findChats error:', e);
           }
         }
+
+        // Attempt 3: check alternative payload fields
+        if (!phoneNumber) {
+          const altSources = [data?.participant, body?.sender, data?.key?.participant];
+          for (const alt of altSources) {
+            if (alt) {
+              const candidate = extractPhoneFromJid(alt) || (isValidIntlPhone(normalizeDigits(alt)) ? normalizeDigits(alt) : null);
+              if (candidate) { phoneNumber = candidate; console.log('[Webhook] Resolved LID via payload field:', phoneNumber); break; }
+            }
+          }
+        }
       }
 
-      // If LID was not resolved, prefix with LID- so it's clear in UI
-      const lidNotResolved = isLid && phoneNumber === lidNumber;
-      if (lidNotResolved) {
-        phoneNumber = `LID-${lidNumber}`;
-        console.log('[Webhook] LID not resolved, using prefixed number:', phoneNumber);
-      }
-      
-      console.log('[Webhook] Sender:', phoneNumber, isLid ? `(LID: ${remoteJidValue})` : '(standard)');
+      const phoneResolved = phoneNumber !== null;
+      console.log('[Webhook] Sender:', phoneResolved ? phoneNumber : `UNRESOLVED-LID(${rawId})`, isLid ? `(LID: ${remoteJidValue})` : '(standard)');
 
       const contactName = data.pushName || null;
       const whatsappMessageId = data.key?.id;
@@ -277,20 +288,40 @@ serve(async (req) => {
       const ownerId = adminRole?.user_id || null;
       console.log('[Webhook] Owner:', ownerId || 'none');
 
-      // 1. Get or create contact
-      // Search by phone_number OR whatsapp_id (for LID contacts)
-      let { data: contact } = await supabase
-        .from('contacts')
-        .select('*')
-        .or(`phone_number.eq.${phoneNumber},whatsapp_id.eq.${whatsappIdForContact}`)
-        .limit(1)
-        .maybeSingle();
+      // ── Get or create contact ──
+      // 1. Search by whatsapp_id (LID) first, then by phone_number
+      let contact: any = null;
+
+      if (isLid) {
+        const { data: lidContact } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('whatsapp_id', whatsappIdForContact)
+          .limit(1)
+          .maybeSingle();
+        contact = lidContact;
+      }
+
+      if (!contact && phoneResolved) {
+        const { data: phoneContact } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('phone_number', phoneNumber!)
+          .limit(1)
+          .maybeSingle();
+        contact = phoneContact;
+      }
 
       if (!contact) {
+        if (!phoneResolved) {
+          // Cannot create contact without a valid phone — use a temporary placeholder
+          // that is clearly numeric (the raw LID digits) but mark whatsapp_id for later resolution
+          console.log('[Webhook] LID not resolved, cannot determine real phone. Creating contact with whatsapp_id only, phone set to raw digits:', rawId);
+        }
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
           .insert({
-            phone_number: phoneNumber,
+            phone_number: phoneResolved ? phoneNumber! : rawId,
             whatsapp_id: whatsappIdForContact,
             name: contactName,
             call_name: contactName ? extractCallName(contactName) : null,
@@ -306,15 +337,26 @@ serve(async (req) => {
           });
         }
         contact = newContact;
-        console.log('[Webhook] Created new contact:', contact.id);
+        console.log('[Webhook] Created new contact:', contact.id, 'phone:', phoneResolved ? phoneNumber : `unresolved(${rawId})`);
       } else {
         const updates: any = { last_activity: new Date().toISOString() };
-        // Always update name/call_name from pushName if available and different
+        
+        // If we now have a valid phone and the contact's current phone is invalid, update it
+        if (phoneResolved && !isValidIntlPhone(normalizeDigits(contact.phone_number || ''))) {
+          updates.phone_number = phoneNumber!;
+          console.log('[Webhook] Updating contact phone from invalid to resolved:', phoneNumber);
+        }
+        // Also update phone if contact had LID- prefix
+        if (phoneResolved && contact.phone_number?.startsWith('LID-')) {
+          updates.phone_number = phoneNumber!;
+          console.log('[Webhook] Replacing LID- prefixed phone with resolved:', phoneNumber);
+        }
+        // Update name from pushName if available and different
         if (contactName && contact.name !== contactName) {
           updates.name = contactName;
           updates.call_name = extractCallName(contactName);
         }
-        // Update whatsapp_id if it changed (e.g. LID migration)
+        // Update whatsapp_id if it changed
         if (whatsappIdForContact && contact.whatsapp_id !== whatsappIdForContact) {
           updates.whatsapp_id = whatsappIdForContact;
         }
