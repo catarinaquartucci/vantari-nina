@@ -12,6 +12,25 @@ const corsHeaders = {
 
 const GROUPING_DELAY_MS = 5000; // 5 seconds
 
+// ── Phone validation helpers ──
+function normalizeDigits(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+function isValidIntlPhone(phone: string): boolean {
+  // Brazilian international format: 55 + 2-digit DDD + 8-9 digit number
+  return /^\d{12,13}$/.test(phone) && phone.length >= 12;
+}
+
+function extractPhoneFromJid(jid: string): string | null {
+  if (!jid) return null;
+  if (jid.includes('@s.whatsapp.net')) {
+    const num = normalizeDigits(jid.replace('@s.whatsapp.net', ''));
+    return isValidIntlPhone(num) ? num : null;
+  }
+  return null;
+}
+
 function extractCallName(pushName: string): string {
   // Remove emojis (broad Unicode ranges)
   let cleaned = pushName.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{2700}-\u{27BF}\u{2B50}\u{2B55}\u{231A}-\u{23FA}\u{25AA}-\u{25FE}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{3030}\u{303D}\u{3297}\u{3299}\u{FE0F}\u{200B}\u{2764}\u{2716}\u{2728}\u{269B}-\u{269C}\u{2694}-\u{2696}\u{26A0}-\u{26A1}\u{26BD}-\u{26BE}]/gu, '');
