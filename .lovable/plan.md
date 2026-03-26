@@ -1,66 +1,48 @@
 
+Objetivo: corrigir a captura/salvamento de telefone para nunca gravar IDs internos (ex: `LID-...`) e sempre persistir número internacional numérico.
 
-## Correção: Números LID salvos como phone_number
+1) Onde está hoje a extração e o salvamento (diagnóstico)
+- Arquivo: `supabase/functions/whatsapp-webhook/index.ts`
+- Extração atual do “telefone”: bloco de `remoteJid` + `lidNumber` (aprox. linhas 150–180).
+- Resolução de LID: `findContacts` / `findChats` (aprox. linhas 184–233).
+- Problema principal: fallback atual grava `LID-${lidNumber}` (aprox. linhas 235–240).
+- Salvamento no banco: `contacts.insert({ phone_number: phoneNumber ... })` e busca `.or(phone_number..., whatsapp_id...)` (aprox. linhas 261–303).
 
-### Problema raiz
+2) Correção no webhook (fonte da falha)
+- Substituir a lógica atual por um pipeline de resolução:
+  - `normalizeDigits(value)` → mantém apenas dígitos.
+  - `isValidIntlPhone(phone)` → validar formato internacional (DDI+DDD+número), para este projeto: `^55\d{10,11}$`.
+  - `extractPhoneFromJid(jid)` → extrair de `@s.whatsapp.net`.
+  - `resolveRealPhoneFromPayload(body, data)` → tentar campos alternativos antes de API (`remoteJidAlt`, `sender`, `participant`, etc., quando presentes).
+  - `resolveRealPhoneFromEvolution(...)` → manter `findContacts` e fallback `findChats`, mas parseando mais campos de resposta (não só `id/jid`).
+- Remover totalmente o fallback `LID-...`.
+- Regra final: só continuar fluxo de criação/atualização se `phone_number` passar na validação.
 
-O WhatsApp (especialmente Android) usa internamente identificadores **LID** (`@lid`) em vez de números reais (`@s.whatsapp.net`). A Evolution API não consegue resolver esses LIDs via `findContacts` (retorna `[]`). O webhook atual usa o número LID bruto como `phone_number`, resultando em números sem sentido como `109710745309305`.
+3) Regras de persistência para não salvar dado inválido
+- Buscar contato por `whatsapp_id` primeiro (quando `@lid`), depois por `phone_number`.
+- Se contato existente por `whatsapp_id` tiver telefone inválido e o novo payload trouxer telefone válido:
+  - atualizar para o número válido.
+  - se já existir outro contato com esse número, mesclar registros relacionados (conversas/deals/agendamentos/documentos) e eliminar duplicado.
+- Se não houver número válido resolvido:
+  - não gravar/atualizar `phone_number` com LID ou valor suspeito.
+  - registrar ocorrência para diagnóstico e retry controlado (sem poluir `contacts` com dado incorreto).
 
-### Solução (3 partes)
+4) Blindagem no banco (garantia “nunca salvar inválido”)
+- Criar migration com trigger de validação em `contacts`:
+  - em INSERT e em UPDATE de `phone_number`, rejeitar valores fora do padrão internacional numérico.
+  - bloquear explicitamente valores com prefixo `LID-` ou caracteres não numéricos.
+- Isso protege todas as rotas de escrita (webhook e UI).
 
-**1. Buscar contato existente por `whatsapp_id` antes de criar novo**
+5) Limpeza de dados já afetados
+- Migration para saneamento dos contatos atuais:
+  - corrigir formatos com máscara/caracteres para somente dígitos.
+  - converter locais sem DDI para formato internacional quando inequívoco.
+  - tentar resolver/mesclar contatos com `whatsapp_id @lid` que já tenham correspondente válido.
+  - remover duplicados após remapeamento de referências.
 
-Atualmente o webhook busca contato apenas por `phone_number`. Se o LID não for resolvido, ele cria um contato novo com o LID como telefone. A correção: buscar primeiro por `whatsapp_id` (que armazena o LID completo). Isso evita duplicatas.
-
-**2. Tentar endpoint alternativo `chat/findChats` quando `findContacts` falha**
-
-O endpoint `findChats` da Evolution API às vezes retém informações do contato que `findContacts` não tem. Tentar como fallback.
-
-**3. Marcar contatos LID não-resolvidos para fácil identificação**
-
-Quando nenhum endpoint resolver o LID, prefixar o `phone_number` com `LID-` para que fique claro na UI que não é um telefone real. Ex: `LID-109710745309305`. Isso permite filtrar e corrigir manualmente depois.
-
-### Detalhes técnicos
-
-**Arquivo: `supabase/functions/whatsapp-webhook/index.ts`**
-
-Alterações na seção de busca/criação de contato:
-
-```typescript
-// 1. Tentar resolver LID via Evolution API (já existe)
-// 2. Se falhou, tentar findChats como fallback
-if (isLid && phoneNumber === lidNumber) {
-  try {
-    const chatsResp = await fetch(
-      `${apiUrl}/chat/findChats/${instance}`,
-      {
-        method: 'POST',
-        headers: { 'apikey': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ where: { id: remoteJidValue } })
-      }
-    );
-    const chats = await chatsResp.json();
-    // Extrair número do chat se disponível
-    const chatContact = chats?.[0]?.contact;
-    if (chatContact?.id?.includes('@s.whatsapp.net')) {
-      phoneNumber = chatContact.id.replace('@s.whatsapp.net', '');
-    }
-  } catch (e) { /* fallback silencioso */ }
-}
-
-// 3. Buscar contato por whatsapp_id (LID) OU phone_number
-let { data: contact } = await supabase
-  .from('contacts')
-  .select('*')
-  .or(`phone_number.eq.${phoneNumber},whatsapp_id.eq.${whatsappIdForContact}`)
-  .limit(1)
-  .maybeSingle();
-
-// 4. Se LID não resolvido, prefixar phone_number
-const finalPhoneNumber = (isLid && phoneNumber === lidNumber) 
-  ? `LID-${lidNumber}` 
-  : phoneNumber;
-```
-
-**Migration SQL**: Corrigir contatos existentes com números LID (Raquel: `109710745309305`, e o novo `41841655308338`), atualizando para `LID-` prefix ou mergindo com contato real se existir.
-
+6) Validação pós-implementação (E2E)
+- Testar 3 cenários:
+  - mensagem com `@s.whatsapp.net` (salva direto em `55...`).
+  - mensagem com `@lid` resolvível (salva em `55...`, sem `LID-`).
+  - `@lid` não resolvível naquele momento (não grava telefone inválido).
+- Conferir no banco: zero contatos novos com `phone_number` não numérico, com `LID-`, ou fora do padrão internacional.
