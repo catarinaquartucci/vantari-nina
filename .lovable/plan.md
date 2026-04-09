@@ -1,20 +1,31 @@
 
 
-## Desativar conversas antigas do contato 5511958557368
+## Limpeza geral: desativar conversas antigas duplicadas
 
-### Situação atual
-- Contato `a224596c-8ced-4733-aa7d-a0c2203545f1` possui **19 conversas** todas com `is_active = true`
-- A conversa mais recente: `30f0f59a-50a3-4a6a-8531-93854ef8cf9c` (09/04, last_message 16:43)
+### Situação encontrada
+
+| Contato | Telefone | Ativas | Manter (mais recente) |
+|---|---|---|---|
+| Gustavo Nunes | 5511977773870 | 9 | `e1797dc4-9886-440d-ba86-78a9bd8661e6` |
+| Raquel | 5511995101612 | 3 | `a1112ec0-ef72-4c74-9b05-ebcff6bf0964` |
 
 ### Ação
-Usar o insert tool para executar:
+
+Executar via insert tool dois UPDATEs:
 
 ```sql
+-- Gustavo: manter apenas a mais recente, desativar 8
 UPDATE conversations 
 SET is_active = false, updated_at = now()
-WHERE contact_id = 'a224596c-8ced-4733-aa7d-a0c2203545f1'
-  AND id != '30f0f59a-50a3-4a6a-8531-93854ef8cf9c';
+WHERE contact_id = '3426b42e-8e14-41b3-ab6a-1e93a6308f9f'
+  AND id != 'e1797dc4-9886-440d-ba86-78a9bd8661e6';
+
+-- Raquel: manter apenas a mais recente, desativar 2
+UPDATE conversations 
+SET is_active = false, updated_at = now()
+WHERE contact_id = '2a8fdc49-0da3-4e4f-aa23-376d361fe791'
+  AND id != 'a1112ec0-ef72-4c74-9b05-ebcff6bf0964';
 ```
 
-Isso mantém apenas a conversa mais recente como ativa e desativa as outras 18.
+Resultado: cada contato ficará com exatamente 1 conversa ativa (a mais recente).
 
