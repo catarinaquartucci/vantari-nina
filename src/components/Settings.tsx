@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock } from 'lucide-react';
+import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, UserPlus } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
 import SystemRoadmap from './SystemRoadmap';
+import InviteSettings from './settings/InviteSettings';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
 import { Button } from './Button';
 import { useOnboardingStatus } from '@/hooks/useOnboardingStatus';
@@ -100,9 +101,15 @@ const Settings: React.FC = () => {
               <BookOpen className="w-4 h-4" />
               Documentação
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="invites" className="gap-2">
+                <UserPlus className="w-4 h-4" />
+                Convites
+              </TabsTrigger>
+            )}
           </TabsList>
 
-          {activeTab !== 'docs' && isAdmin && (
+          {(activeTab === 'agent' || activeTab === 'apis') && isAdmin && (
             <div className="flex gap-3">
               <Button
                 variant="ghost"
@@ -132,7 +139,7 @@ const Settings: React.FC = () => {
             </div>
           )}
           
-          {activeTab !== 'docs' && !isAdmin && (
+          {(activeTab === 'agent' || activeTab === 'apis') && !isAdmin && (
             <div className="flex items-center gap-2 text-sm text-amber-400">
               <Lock className="w-4 h-4" />
               Apenas administradores podem editar
@@ -151,6 +158,12 @@ const Settings: React.FC = () => {
         <TabsContent value="docs">
           <SystemRoadmap />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="invites">
+            <InviteSettings />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

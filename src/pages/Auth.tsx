@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 import { z } from 'zod';
+import { supabase } from '@/integrations/supabase/client';
 
 // Validation schemas
 const emailSchema = z.string().email('Email inválido');
@@ -78,6 +79,13 @@ const Auth: React.FC = () => {
         toast.success('Login realizado com sucesso!');
         navigate('/dashboard', { replace: true });
       } else {
+        // Check if email is invited before signup
+        const { data: isInvited, error: inviteError } = await supabase.rpc('is_email_invited', { p_email: email });
+        if (inviteError || !isInvited) {
+          toast.error('Este email não está autorizado. Solicite um convite ao administrador.');
+          return;
+        }
+
         const { error } = await signUp(email, password, fullName);
         if (error) {
           if (error.message.includes('User already registered')) {
