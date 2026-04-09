@@ -1,32 +1,20 @@
 
 
-## Adicionar ordenação na busca de conversa existente
+## Desativar conversas antigas do contato 5511958557368
 
-### Problema
-Na linha 367-372 do `whatsapp-webhook/index.ts`, a busca por conversa ativa usa `.maybeSingle()` sem `.order()`. Se houver múltiplas conversas ativas para o mesmo contato, o Supabase pode retornar erro (mais de um resultado para `maybeSingle`).
+### Situação atual
+- Contato `a224596c-8ced-4733-aa7d-a0c2203545f1` possui **19 conversas** todas com `is_active = true`
+- A conversa mais recente: `30f0f59a-50a3-4a6a-8531-93854ef8cf9c` (09/04, last_message 16:43)
 
-### Alteração
-No trecho (linhas 367-372):
-```typescript
-let { data: conversation } = await supabase
-  .from('conversations')
-  .select('*')
-  .eq('contact_id', contact.id)
-  .eq('is_active', true)
-  .maybeSingle();
+### Ação
+Usar o insert tool para executar:
+
+```sql
+UPDATE conversations 
+SET is_active = false, updated_at = now()
+WHERE contact_id = 'a224596c-8ced-4733-aa7d-a0c2203545f1'
+  AND id != '30f0f59a-50a3-4a6a-8531-93854ef8cf9c';
 ```
 
-Alterar para:
-```typescript
-let { data: conversation } = await supabase
-  .from('conversations')
-  .select('*')
-  .eq('contact_id', contact.id)
-  .eq('is_active', true)
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
-```
-
-Isso garante que, havendo múltiplas conversas ativas, sempre a mais recente será utilizada.
+Isso mantém apenas a conversa mais recente como ativa e desativa as outras 18.
 
