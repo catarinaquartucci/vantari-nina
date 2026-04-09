@@ -101,6 +101,12 @@ const Settings: React.FC = () => {
               <BookOpen className="w-4 h-4" />
               Documentação
             </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="invites" className="gap-2">
+                <UserPlus className="w-4 h-4" />
+                Convites
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {activeTab !== 'docs' && isAdmin && (
@@ -152,6 +158,12 @@ const Settings: React.FC = () => {
         <TabsContent value="docs">
           <SystemRoadmap />
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="invites">
+            <InviteSettings />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
