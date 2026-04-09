@@ -109,7 +109,7 @@ const Settings: React.FC = () => {
             )}
           </TabsList>
 
-          {activeTab !== 'docs' && isAdmin && (
+          {(activeTab === 'agent' || activeTab === 'apis') && isAdmin && (
             <div className="flex gap-3">
               <Button
                 variant="ghost"
@@ -139,7 +139,7 @@ const Settings: React.FC = () => {
             </div>
           )}
           
-          {activeTab !== 'docs' && !isAdmin && (
+          {(activeTab === 'agent' || activeTab === 'apis') && !isAdmin && (
             <div className="flex items-center gap-2 text-sm text-amber-400">
               <Lock className="w-4 h-4" />
               Apenas administradores podem editar
