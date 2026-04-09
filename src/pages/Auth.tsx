@@ -79,6 +79,13 @@ const Auth: React.FC = () => {
         toast.success('Login realizado com sucesso!');
         navigate('/dashboard', { replace: true });
       } else {
+        // Check if email is invited before signup
+        const { data: isInvited, error: inviteError } = await supabase.rpc('is_email_invited', { p_email: email });
+        if (inviteError || !isInvited) {
+          toast.error('Este email não está autorizado. Solicite um convite ao administrador.');
+          return;
+        }
+
         const { error } = await signUp(email, password, fullName);
         if (error) {
           if (error.message.includes('User already registered')) {
