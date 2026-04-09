@@ -462,6 +462,33 @@ export type Database = {
           },
         ]
       }
+      invited_emails: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          invited_by: string | null
+          updated_at: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          invited_by?: string | null
+          updated_at?: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string | null
+          updated_at?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
       message_grouping_queue: {
         Row: {
           contacts_data: Json | null
@@ -1256,6 +1283,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_email_invited: { Args: { p_email: string }; Returns: boolean }
       update_client_memory: {
         Args: { p_contact_id: string; p_new_memory: Json }
         Returns: undefined
