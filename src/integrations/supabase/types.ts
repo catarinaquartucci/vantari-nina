@@ -89,6 +89,7 @@ export type Database = {
           blocked_reason: string | null
           call_name: string | null
           client_memory: Json | null
+          cpf: string | null
           created_at: string
           email: string | null
           first_contact_date: string
@@ -98,6 +99,7 @@ export type Database = {
           last_activity: string
           name: string | null
           notes: string | null
+          numero_processo: string | null
           phone_number: string
           profile_picture_url: string | null
           tags: string[] | null
@@ -110,6 +112,7 @@ export type Database = {
           blocked_reason?: string | null
           call_name?: string | null
           client_memory?: Json | null
+          cpf?: string | null
           created_at?: string
           email?: string | null
           first_contact_date?: string
@@ -119,6 +122,7 @@ export type Database = {
           last_activity?: string
           name?: string | null
           notes?: string | null
+          numero_processo?: string | null
           phone_number: string
           profile_picture_url?: string | null
           tags?: string[] | null
@@ -131,6 +135,7 @@ export type Database = {
           blocked_reason?: string | null
           call_name?: string | null
           client_memory?: Json | null
+          cpf?: string | null
           created_at?: string
           email?: string | null
           first_contact_date?: string
@@ -140,6 +145,7 @@ export type Database = {
           last_activity?: string
           name?: string | null
           notes?: string | null
+          numero_processo?: string | null
           phone_number?: string
           profile_picture_url?: string | null
           tags?: string[] | null
