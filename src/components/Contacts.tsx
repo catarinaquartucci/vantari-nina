@@ -4,11 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from './Button';
 import { api } from '../services/api';
 import { Contact } from '../types';
+import ContactDetailModal from './ContactDetailModal';
 
 const Contacts: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -116,7 +118,7 @@ const Contacts: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-800/50">
                 {filteredContacts.map((contact) => (
-                  <tr key={contact.id} className="hover:bg-slate-800/40 transition-colors group">
+                  <tr key={contact.id} className="hover:bg-slate-800/40 transition-colors group cursor-pointer" onClick={() => setSelectedContactId(contact.id)}>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-700 to-slate-800 border border-slate-700 flex items-center justify-center text-sm font-bold text-cyan-400 shadow-inner">
@@ -182,6 +184,11 @@ const Contacts: React.FC = () => {
           </div>
         )}
       </div>
+      {/* Contact Detail Modal */}
+      <ContactDetailModal 
+        contactId={selectedContactId} 
+        onClose={() => setSelectedContactId(null)} 
+      />
     </div>
   );
 };
