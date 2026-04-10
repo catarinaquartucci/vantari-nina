@@ -86,6 +86,8 @@ export interface Contact {
   email: string;
   status: 'lead' | 'customer' | 'churned';
   lastContact: string;
+  cpf?: string | null;
+  numeroProcesso?: string | null;
 }
 
 export interface StatMetric {
@@ -135,6 +137,8 @@ export interface Deal {
   lostReason?: string;
   clientMemory?: ClientMemory;
   conversationId?: string;
+  contactCpf?: string | null;
+  contactNumeroProcesso?: string | null;
 }
 
 export interface DealActivity {
@@ -229,6 +233,8 @@ export interface DBContact {
   last_activity: string;
   created_at: string;
   updated_at: string;
+  cpf: string | null;
+  numero_processo: string | null;
 }
 
 export interface DBConversation {
