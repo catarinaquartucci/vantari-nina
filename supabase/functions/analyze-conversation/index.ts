@@ -152,6 +152,14 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
                 type: "string",
                 enum: ["unknown", "immediate", "1month", "3months", "6months+"],
                 description: "Timeline de decisão baseado em urgência"
+              },
+              cpf: {
+                type: "string",
+                description: "CPF do cliente se mencionado na conversa (formato: XXX.XXX.XXX-XX ou apenas dígitos). Retorne null se não mencionado."
+              },
+              numero_processo: {
+                type: "string",
+                description: "Número do processo trabalhista se mencionado na conversa (ex: XXXXXXX-XX.XXXX.X.XX.XXXX). Retorne null se não mencionado."
               }
             },
             required: ["interests", "pain_points", "qualification_score", "next_best_action", "budget_indication", "decision_timeline"],
@@ -293,6 +301,24 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
         p_contact_id: contact_id,
         p_new_memory: updatedMemory
       });
+
+      // Save CPF and numero_processo if extracted
+      const contactUpdates: Record<string, string> = {};
+      if (insights.cpf) contactUpdates.cpf = insights.cpf;
+      if (insights.numero_processo) contactUpdates.numero_processo = insights.numero_processo;
+
+      if (Object.keys(contactUpdates).length > 0) {
+        const { error: contactUpdateError } = await supabase
+          .from('contacts')
+          .update(contactUpdates)
+          .eq('id', contact_id);
+
+        if (contactUpdateError) {
+          console.error('[Analyze] Error updating CPF/processo:', contactUpdateError);
+        } else {
+          console.log('[Analyze] CPF/processo updated:', contactUpdates);
+        }
+      }
 
       console.log('[Analyze] Memory updated successfully');
     }
