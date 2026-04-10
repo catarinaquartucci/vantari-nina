@@ -345,8 +345,10 @@ export const api = {
       name: c.name || c.call_name || c.phone_number,
       phone: c.phone_number,
       email: c.email || '',
-      status: 'lead' as const, // Map from tags or client_memory in future
-      lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR')
+      status: 'lead' as const,
+      lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
+      cpf: (c as any).cpf || null,
+      numeroProcesso: (c as any).numero_processo || null,
     }));
   },
 
@@ -758,7 +760,7 @@ export const api = {
       .from('deals')
       .select(`
         *,
-        contact:contacts(name, call_name, phone_number, email, client_memory),
+        contact:contacts(name, call_name, phone_number, email, client_memory, cpf, numero_processo),
         owner:team_members(name, avatar)
       `)
       .order('created_at', { ascending: false });
@@ -800,6 +802,8 @@ export const api = {
       lostReason: d.lost_reason,
       clientMemory: d.contact?.client_memory || null,
       conversationId: convMap.get(d.contact_id) || undefined,
+      contactCpf: d.contact?.cpf || null,
+      contactNumeroProcesso: d.contact?.numero_processo || null,
     }));
   },
 
