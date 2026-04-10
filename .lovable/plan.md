@@ -1,52 +1,44 @@
 
 
-## Atualizar lógica de enfileiramento na `nina_processing_queue` no message-grouper
+## Corrigir race condition de duplicatas na nina_processing_queue
 
 ### Problema
-Atualmente, o message-grouper só verifica se já existe um item na fila com o mesmo `message_id`. Se o usuário envia várias mensagens seguidas na mesma conversa, pode criar múltiplos itens `pending` para o mesmo `conversation_id`.
+Múltiplas instâncias do `message-grouper` executam simultaneamente. Todas fazem SELECT para verificar se existe item `pending` para a mesma conversa, todas veem "não existe", e todas inserem — gerando duplicatas. A verificação em código (application-level) não resolve race conditions.
 
 ### Solução
-Antes de inserir na `nina_processing_queue`, verificar também se já existe um item com `status = 'pending'` para o mesmo `conversation_id`. Se existir, apenas atualizar o `message_id` (e `context_data`) para a mensagem mais recente ao invés de criar um novo registro.
+Resolver no nível do banco de dados com duas abordagens complementares:
 
-### Alteração em `supabase/functions/message-grouper/index.ts`
-
-Substituir o bloco de verificação (linhas 132-136) por:
-
-```typescript
-// Check by message_id OR pending item for same conversation
-const { data: existingByMessage } = await supabase
-  .from('nina_processing_queue')
-  .select('id')
-  .eq('message_id', lastDbMessage.id)
-  .maybeSingle();
-
-if (existingByMessage) {
-  // Already queued for this exact message, skip
-  continue;
-}
-
-const { data: existingPending } = await supabase
-  .from('nina_processing_queue')
-  .select('id')
-  .eq('conversation_id', conversationId)
-  .eq('status', 'pending')
-  .maybeSingle();
-
-if (existingPending) {
-  // Update existing pending item with latest message
-  await supabase
-    .from('nina_processing_queue')
-    .update({
-      message_id: lastDbMessage.id,
-      context_data: { /* updated context */ },
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', existingPending.id);
-} else {
-  // Insert new item (existing insert logic)
-}
+**1. Criar unique partial index na tabela `nina_processing_queue`**
+```sql
+CREATE UNIQUE INDEX idx_nina_queue_conversation_pending 
+ON nina_processing_queue (conversation_id) 
+WHERE status = 'pending';
 ```
+Isso impede fisicamente que existam dois registros `pending` para o mesmo `conversation_id`.
+
+**2. Usar INSERT ... ON CONFLICT no message-grouper**
+Substituir a lógica de SELECT + INSERT/UPDATE por um único comando `upsert` que usa o index parcial:
+```typescript
+const { error } = await supabase
+  .from('nina_processing_queue')
+  .upsert({
+    message_id: lastDbMessage.id,
+    conversation_id: conversationId,
+    contact_id: conversation.contact_id,
+    priority: 1,
+    context_data: contextData,
+    status: 'pending'
+  }, { 
+    onConflict: 'conversation_id',
+    ignoreDuplicates: false 
+  });
+```
+Se já existir um `pending` para a conversa, atualiza com a mensagem mais recente. Se não, insere.
 
 ### Arquivos modificados
-- `supabase/functions/message-grouper/index.ts`
+- `supabase/migrations/` — nova migration para o unique partial index
+- `supabase/functions/message-grouper/index.ts` — simplificar lógica de enfileiramento para usar upsert atômico
+
+### Resultado esperado
+Zero duplicatas na `nina_processing_queue`, independente de quantas instâncias do message-grouper executem simultaneamente.
 
