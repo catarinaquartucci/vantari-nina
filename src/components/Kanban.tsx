@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { 
   Plus, Search, MoreHorizontal, DollarSign, Loader2, CalendarClock, Tag, X, 
   Building, User, Calendar, ArrowRight, CheckCircle2, Circle, 
-  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot
+  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot, Hash
 } from 'lucide-react';
 import { Button } from './Button';
 import { api } from '../services/api';
@@ -701,6 +701,21 @@ const Kanban: React.FC = () => {
                         </h4>
                         
                         <div className="space-y-3">
+                          {/* CPF */}
+                          {selectedDeal.contactCpf && (
+                            <div className="p-3 rounded-lg bg-slate-900/50 border border-slate-800">
+                              <span className="text-xs text-slate-400 flex items-center gap-1"><FileText className="w-3 h-3" /> CPF</span>
+                              <p className="text-sm text-slate-200 mt-1 font-mono font-medium">{selectedDeal.contactCpf}</p>
+                            </div>
+                          )}
+
+                          {/* Número do Processo */}
+                          {selectedDeal.contactNumeroProcesso && (
+                            <div className="p-3 rounded-lg bg-slate-900/50 border border-slate-800">
+                              <span className="text-xs text-slate-400 flex items-center gap-1"><Hash className="w-3 h-3" /> Nº do Processo Trabalhista</span>
+                              <p className="text-sm text-slate-200 mt-1 font-mono font-medium">{selectedDeal.contactNumeroProcesso}</p>
+                            </div>
+                          )}
                           {/* Qualification Score */}
                           <div className="p-3 rounded-lg bg-slate-900/50 border border-slate-800">
                             <div className="flex items-center justify-between mb-2">
