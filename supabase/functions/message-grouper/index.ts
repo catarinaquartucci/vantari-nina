@@ -129,18 +129,6 @@ serve(async (req) => {
 
         // Queue for Nina if conversation is handled by Nina
       if (conversation.status === 'nina') {
-          // Check if this exact message is already queued
-          const { data: existingByMessage } = await supabase
-            .from('nina_processing_queue')
-            .select('id')
-            .eq('message_id', lastDbMessage.id)
-            .maybeSingle();
-
-          if (existingByMessage) {
-            console.log('[MessageGrouper] Message already queued, skipping');
-            continue;
-          }
-
           const instanceName = messages[0].phone_number_id || evolutionInstance;
           const contextData = {
             phone_number_id: instanceName,
@@ -150,42 +138,28 @@ serve(async (req) => {
             combined_content: combinedContent
           };
 
-          // Check if there's already a pending item for this conversation
-          const { data: existingPending } = await supabase
+          // Atomic upsert: uses unique partial index on (conversation_id) WHERE status='pending'
+          const { error: upsertError } = await supabase
             .from('nina_processing_queue')
-            .select('id')
-            .eq('conversation_id', conversationId)
-            .eq('status', 'pending')
-            .maybeSingle();
+            .upsert({
+              message_id: lastDbMessage.id,
+              conversation_id: conversationId,
+              contact_id: conversation.contact_id,
+              priority: 1,
+              context_data: contextData,
+              status: 'pending'
+            }, {
+              onConflict: 'conversation_id',
+              ignoreDuplicates: false
+            });
 
-          if (existingPending) {
-            // Update existing pending item with latest message
-            await supabase
-              .from('nina_processing_queue')
-              .update({
-                message_id: lastDbMessage.id,
-                context_data: contextData,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', existingPending.id);
-            console.log('[MessageGrouper] Updated existing pending queue item with latest message');
+          if (upsertError) {
+            console.error('[MessageGrouper] Upsert error:', upsertError);
           } else {
-            const { error: ninaQueueError } = await supabase
-              .from('nina_processing_queue')
-              .insert({
-                message_id: lastDbMessage.id,
-                conversation_id: conversationId,
-                contact_id: conversation.contact_id,
-                priority: 1,
-                context_data: contextData
-              });
-
-            if (!ninaQueueError) {
-              console.log('[MessageGrouper] Message queued for Nina processing');
-            }
+            console.log('[MessageGrouper] Message upserted into Nina queue for conversation', conversationId);
           }
 
-          // Trigger nina-orchestrator in both cases
+          // Trigger nina-orchestrator
           fetch(`${supabaseUrl}/functions/v1/nina-orchestrator`, {
             method: 'POST',
             headers: {
