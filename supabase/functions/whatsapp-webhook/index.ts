@@ -10,7 +10,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GROUPING_DELAY_MS = 5000; // 5 seconds
+const GROUPING_DELAY_MS = 10000; // 10 seconds
 
 // ── Phone validation helpers ──
 function normalizeDigits(value: string): string {
