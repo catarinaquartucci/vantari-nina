@@ -138,20 +138,14 @@ serve(async (req) => {
             combined_content: combinedContent
           };
 
-          // Atomic upsert: uses unique partial index on (conversation_id) WHERE status='pending'
-          const { error: upsertError } = await supabase
-            .from('nina_processing_queue')
-            .upsert({
-              message_id: lastDbMessage.id,
-              conversation_id: conversationId,
-              contact_id: conversation.contact_id,
-              priority: 1,
-              context_data: contextData,
-              status: 'pending'
-            }, {
-              onConflict: 'conversation_id',
-              ignoreDuplicates: false
-            });
+          // Atomic upsert via RPC: uses partial unique index on (conversation_id) WHERE status='pending'
+          const { error: upsertError } = await supabase.rpc('upsert_nina_queue', {
+            p_message_id: lastDbMessage.id,
+            p_conversation_id: conversationId,
+            p_contact_id: conversation.contact_id,
+            p_priority: 1,
+            p_context_data: contextData
+          });
 
           if (upsertError) {
             console.error('[MessageGrouper] Upsert error:', upsertError);
