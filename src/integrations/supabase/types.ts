@@ -1318,6 +1318,16 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      upsert_nina_queue: {
+        Args: {
+          p_contact_id: string
+          p_context_data: Json
+          p_conversation_id: string
+          p_message_id: string
+          p_priority: number
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"
