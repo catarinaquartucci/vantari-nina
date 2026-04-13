@@ -1,44 +1,33 @@
 
 
-## Reprocessar mensagens pendentes dos últimos dias
+## Dois ajustes nas Edge Functions
 
-### Situação
-Durante o período em que o cron estava parado, **13 conversas** de contatos diferentes ficaram com mensagens sem resposta da Nina. A fila `nina_processing_queue` está vazia — essas mensagens nunca foram enfileiradas.
+### 1. Aumentar GROUPING_DELAY_MS de 5s para 10s
+**Arquivo:** `supabase/functions/whatsapp-webhook/index.ts` (linha 13)
+- Alterar `const GROUPING_DELAY_MS = 5000;` para `const GROUPING_DELAY_MS = 10000;`
 
-### Conversas afetadas
+### 2. Remover fallback de mensagem vazia no nina-orchestrator
+**Arquivo:** `supabase/functions/nina-orchestrator/index.ts` (linhas 879-883)
+- Substituir o bloco de fallback por uma lógica que faz skip: se `aiContent` estiver vazio após o processamento da IA, marcar a mensagem como processada, atualizar o status na fila para `completed`, e retornar sem enviar nenhuma mensagem ao contato.
 
-| Contato | Última mensagem | Data |
-|---------|----------------|------|
-| André Kirkovics | Cpf 028.253.936-06 | 13/04 12:36 |
-| Catarina | oi | 13/04 12:22 |
-| Se For Urgente | Ola | 13/04 07:55 |
-| Rodrigo Santos | Boa tarde vcs compra processos... | 12/04 18:13 |
-| ~ | Olá | 12/04 17:50 |
-| effico saneamento | Queria vender processo | 11/04 15:36 |
-| Rc | Olá | 11/04 14:11 |
-| Vaguinao | Bom dia | 11/04 12:53 |
-| Mauricio | 44803163880 | 10/04 20:45 |
-| Bruno Moraes | Estou no aguardo | 10/04 19:18 |
-| 🇧🇷🇺🇸 | 0012798-05.2024... | 10/04 18:56 |
-| . | Boa noite | 09/04 21:32 |
-| Saulo Henrique | Saulo Henrique santana... | 09/04 21:30 |
+```typescript
+// Antes:
+if (!aiContent) {
+  console.warn('[Nina] Empty AI response received, using fallback');
+  aiContent = 'Olá! Como posso ajudar você hoje? 😊';
+}
 
-### Plano de execução
+// Depois:
+if (!aiContent) {
+  console.warn('[Nina] Empty AI response received, skipping send');
+  await supabase
+    .from('messages')
+    .update({ processed_by_nina: true })
+    .eq('id', message.id);
+  continue; // pula para o próximo item da fila
+}
+```
 
-**1. Inserir na fila via RPC**
-Chamar `upsert_nina_queue` para cada uma das 13 conversas, usando o `message_id` da mensagem mais recente não processada de cada conversa. Isso coloca todas na fila como `pending`.
-
-**2. Disparar o orchestrator manualmente**
-Chamar a edge function `trigger-nina-orchestrator` para processar o batch imediatamente, sem esperar o próximo ciclo do cron (1 minuto).
-
-**3. Verificar nos logs**
-Confirmar que as 13 mensagens foram processadas e que a Nina respondeu a cada contato.
-
-### Detalhes técnicos
-- Usar `supabase.rpc('upsert_nina_queue', {...})` para cada conversa via edge function ou curl
-- As 13 chamadas usam os dados já identificados (message_id, conversation_id, contact_id)
-- O orchestrator processará o batch e disparará o `whatsapp-sender` automaticamente
-
-### Arquivos modificados
-Nenhum arquivo será modificado — apenas inserções no banco e chamadas a edge functions existentes.
+### Deploy
+Após as alterações, deploy de ambas as functions: `whatsapp-webhook` e `nina-orchestrator`.
 
