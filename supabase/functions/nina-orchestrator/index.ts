@@ -876,10 +876,18 @@ async function processQueueItem(
     }
   }
 
-  // Fallback for empty AI response - use default greeting instead of throwing error
+  // If AI response is empty, mark as processed and skip sending
   if (!aiContent) {
-    console.warn('[Nina] Empty AI response received, using fallback');
-    aiContent = 'Olá! Como posso ajudar você hoje? 😊';
+    console.warn('[Nina] Empty AI response received, skipping send');
+    const responseTime = Date.now() - new Date(message.sent_at).getTime();
+    await supabase
+      .from('messages')
+      .update({ 
+        processed_by_nina: true,
+        nina_response_time: responseTime
+      })
+      .eq('id', message.id);
+    return;
   }
 
   console.log('[Nina] Final response length:', aiContent.length);
