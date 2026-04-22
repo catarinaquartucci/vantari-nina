@@ -62,6 +62,7 @@ const Kanban: React.FC = () => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [valueDraft, setValueDraft] = useState('');
   const [savingValue, setSavingValue] = useState(false);
+  const [valueError, setValueError] = useState<string | null>(null);
   
   const dragItem = useRef<string | null>(null);
   
