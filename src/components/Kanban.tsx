@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { 
   Plus, Search, MoreHorizontal, DollarSign, Loader2, CalendarClock, Tag, X, 
   Building, User, Calendar, ArrowRight, CheckCircle2, Circle, 
-  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot, Hash
+  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot, Hash, Pencil
 } from 'lucide-react';
 import { Button } from './Button';
 import { api } from '../services/api';
@@ -33,6 +33,9 @@ const Kanban: React.FC = () => {
   const [newActivityDescription, setNewActivityDescription] = useState('');
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [isEditingValue, setIsEditingValue] = useState(false);
+  const [valueDraft, setValueDraft] = useState('');
+  const [savingValue, setSavingValue] = useState(false);
   
   const dragItem = useRef<string | null>(null);
   
