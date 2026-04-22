@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { 
   Plus, Search, MoreHorizontal, DollarSign, Loader2, CalendarClock, Tag, X, 
   Building, User, Calendar, ArrowRight, CheckCircle2, Circle, 
-  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot, Hash
+  FileText, Phone, Mail, Paperclip, Send, CheckSquare, Clock, Trash2, Settings, Brain, MessageSquare, Bot, Hash, Pencil
 } from 'lucide-react';
 import { Button } from './Button';
 import { api } from '../services/api';
@@ -33,6 +33,9 @@ const Kanban: React.FC = () => {
   const [newActivityDescription, setNewActivityDescription] = useState('');
   const [conversationMessages, setConversationMessages] = useState<any[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [isEditingValue, setIsEditingValue] = useState(false);
+  const [valueDraft, setValueDraft] = useState('');
+  const [savingValue, setSavingValue] = useState(false);
   
   const dragItem = useRef<string | null>(null);
   
@@ -234,6 +237,57 @@ const Kanban: React.FC = () => {
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  };
+
+  const startEditingValue = () => {
+    if (!selectedDeal) return;
+    const current = selectedDeal.value || 0;
+    setValueDraft(current === 0 ? '' : String(current).replace('.', ','));
+    setIsEditingValue(true);
+  };
+
+  const cancelEditingValue = () => {
+    setIsEditingValue(false);
+    setValueDraft('');
+  };
+
+  const commitValue = async () => {
+    if (!selectedDeal || savingValue) return;
+
+    const normalized = valueDraft.trim().replace(/\./g, '').replace(',', '.');
+    const parsed = normalized === '' ? 0 : Number(normalized);
+
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast.error('Valor inválido');
+      return;
+    }
+
+    if (parsed === (selectedDeal.value || 0)) {
+      setIsEditingValue(false);
+      return;
+    }
+
+    const previousValue = selectedDeal.value || 0;
+    const dealId = selectedDeal.id;
+
+    // Optimistic update
+    setSelectedDeal({ ...selectedDeal, value: parsed });
+    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: parsed } : d));
+    setIsEditingValue(false);
+    setSavingValue(true);
+
+    try {
+      await api.updateDealValue(dealId, parsed);
+      toast.success('Valor atualizado');
+    } catch (error) {
+      console.error('Erro ao atualizar valor', error);
+      toast.error('Não foi possível atualizar o valor');
+      // Revert
+      setSelectedDeal(curr => curr && curr.id === dealId ? { ...curr, value: previousValue } : curr);
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: previousValue } : d));
+    } finally {
+      setSavingValue(false);
+    }
   };
 
   const onDragStart = (e: React.DragEvent, dealId: string) => {
@@ -462,7 +516,35 @@ const Kanban: React.FC = () => {
                         <div>
                             <h2 className="text-2xl font-bold text-white mb-1">{selectedDeal.title}</h2>
                             <div className="flex items-center gap-2 text-slate-400 text-sm flex-wrap">
-                                <span className="font-semibold text-emerald-400">{formatCurrency(selectedDeal.value)}</span>
+                                {isEditingValue ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="text-emerald-400 font-semibold">R$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      autoFocus
+                                      value={valueDraft}
+                                      onChange={(e) => setValueDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
+                                      onBlur={commitValue}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+                                        else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
+                                      }}
+                                      placeholder="0,00"
+                                      className="w-24 h-7 px-2 rounded bg-slate-800 border border-emerald-500/40 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-emerald-400"
+                                    />
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={startEditingValue}
+                                    title="Clique para editar o valor"
+                                    className="group inline-flex items-center gap-1 font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                                  >
+                                    <span>{formatCurrency(selectedDeal.value || 0)}</span>
+                                    <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-70 transition-opacity" />
+                                  </button>
+                                )}
                                 <span className="w-1 h-1 rounded-full bg-slate-600"></span>
                                 <span className="flex items-center gap-1"><Building className="w-3 h-3" /> {selectedDeal.company}</span>
                                 <span className="w-1 h-1 rounded-full bg-slate-600"></span>

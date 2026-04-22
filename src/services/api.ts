@@ -1140,6 +1140,21 @@ export const api = {
   },
 
   /**
+   * Update deal value (R$)
+   */
+  updateDealValue: async (dealId: string, value: number): Promise<void> => {
+    const { error } = await supabase
+      .from('deals')
+      .update({ value })
+      .eq('id', dealId);
+
+    if (error) {
+      console.error('[API] Error updating deal value:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Fetch activities for a deal
    */
   fetchDealActivities: async (dealId: string): Promise<any[]> => {
