@@ -14,6 +14,32 @@ import { PipelineSettingsModal } from './PipelineSettingsModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { z } from 'zod';
+
+// BRL value schema: accepts "1500", "1500,50", "1.500", "1.500,50", or empty (= 0)
+const brlValueSchema = z
+  .string()
+  .trim()
+  .refine(
+    (v) => v === '' || /^(\d{1,3}(\.\d{3})*|\d+)(,\d{1,2})?$/.test(v),
+    { message: 'Formato inválido. Use ex: 1500 ou 1.500,50' }
+  )
+  .transform((v) => (v === '' ? 0 : Number(v.replace(/\./g, '').replace(',', '.'))))
+  .pipe(
+    z
+      .number()
+      .min(0, { message: 'O valor não pode ser negativo' })
+      .max(999_999_999.99, { message: 'Valor máximo: R$ 999.999.999,99' })
+      .refine((n) => Number.isFinite(n), { message: 'Valor inválido' })
+  );
+
+const formatBrlDraft = (value: number): string => {
+  if (!value) return '';
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+};
 
 const Kanban: React.FC = () => {
   const { sdrName } = useCompanySettings();
@@ -36,6 +62,7 @@ const Kanban: React.FC = () => {
   const [isEditingValue, setIsEditingValue] = useState(false);
   const [valueDraft, setValueDraft] = useState('');
   const [savingValue, setSavingValue] = useState(false);
+  const [valueError, setValueError] = useState<string | null>(null);
   
   const dragItem = useRef<string | null>(null);
   
@@ -242,28 +269,37 @@ const Kanban: React.FC = () => {
   const startEditingValue = () => {
     if (!selectedDeal) return;
     const current = selectedDeal.value || 0;
-    setValueDraft(current === 0 ? '' : String(current).replace('.', ','));
+    setValueDraft(formatBrlDraft(current));
+    setValueError(null);
     setIsEditingValue(true);
   };
 
   const cancelEditingValue = () => {
     setIsEditingValue(false);
     setValueDraft('');
+    setValueError(null);
+  };
+
+  const handleValueChange = (raw: string) => {
+    // Light mask: keep only digits, dot and comma
+    const filtered = raw.replace(/[^0-9.,]/g, '');
+    setValueDraft(filtered);
+    if (valueError) setValueError(null);
   };
 
   const commitValue = async () => {
     if (!selectedDeal || savingValue) return;
 
-    const normalized = valueDraft.trim().replace(/\./g, '').replace(',', '.');
-    const parsed = normalized === '' ? 0 : Number(normalized);
-
-    if (Number.isNaN(parsed) || parsed < 0) {
-      toast.error('Valor inválido');
+    const result = brlValueSchema.safeParse(valueDraft);
+    if (!result.success) {
+      setValueError(result.error.issues[0]?.message ?? 'Valor inválido');
       return;
     }
+    const parsed = result.data;
 
     if (parsed === (selectedDeal.value || 0)) {
       setIsEditingValue(false);
+      setValueError(null);
       return;
     }
 
@@ -273,18 +309,22 @@ const Kanban: React.FC = () => {
     // Optimistic update
     setSelectedDeal({ ...selectedDeal, value: parsed });
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: parsed } : d));
-    setIsEditingValue(false);
     setSavingValue(true);
+    setValueError(null);
 
     try {
       await api.updateDealValue(dealId, parsed);
       toast.success('Valor atualizado');
-    } catch (error) {
+      setIsEditingValue(false);
+    } catch (error: any) {
       console.error('Erro ao atualizar valor', error);
-      toast.error('Não foi possível atualizar o valor');
-      // Revert
+      const msg = error?.message || 'Não foi possível atualizar o valor';
+      toast.error(msg);
+      // Rollback optimistic update
       setSelectedDeal(curr => curr && curr.id === dealId ? { ...curr, value: previousValue } : curr);
       setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: previousValue } : d));
+      setValueError(msg);
+      // Keep input open so user can retry
     } finally {
       setSavingValue(false);
     }
@@ -517,22 +557,35 @@ const Kanban: React.FC = () => {
                             <h2 className="text-2xl font-bold text-white mb-1">{selectedDeal.title}</h2>
                             <div className="flex items-center gap-2 text-slate-400 text-sm flex-wrap">
                                 {isEditingValue ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="text-emerald-400 font-semibold">R$</span>
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      autoFocus
-                                      value={valueDraft}
-                                      onChange={(e) => setValueDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
-                                      onBlur={commitValue}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
-                                        else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
-                                      }}
-                                      placeholder="0,00"
-                                      className="w-24 h-7 px-2 rounded bg-slate-800 border border-emerald-500/40 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-emerald-400"
-                                    />
+                                  <span className="inline-flex flex-col gap-0.5">
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="text-emerald-400 font-semibold">R$</span>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoFocus
+                                        value={valueDraft}
+                                        onChange={(e) => handleValueChange(e.target.value)}
+                                        onBlur={commitValue}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+                                          else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
+                                        }}
+                                        placeholder="0,00"
+                                        aria-invalid={!!valueError}
+                                        className={`w-28 h-7 px-2 rounded bg-slate-800 border text-emerald-400 font-semibold text-sm focus:outline-none ${
+                                          valueError
+                                            ? 'border-red-500/70 focus:border-red-400'
+                                            : 'border-emerald-500/40 focus:border-emerald-400'
+                                        }`}
+                                      />
+                                      {savingValue && <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />}
+                                    </span>
+                                    {valueError && (
+                                      <span className="text-[11px] text-red-400 leading-tight max-w-[260px]">
+                                        {valueError}
+                                      </span>
+                                    )}
                                   </span>
                                 ) : (
                                   <button
