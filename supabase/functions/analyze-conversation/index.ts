@@ -31,6 +31,70 @@ serve(async (req) => {
     
     console.log(`[Analyze] Interaction #${interactionCount}, full analysis: ${shouldAnalyze}`);
 
+    // ALWAYS run lightweight CPF/processo extraction on every message (cheap and critical)
+    // Only fills empty fields - never overwrites existing data
+    try {
+      const { data: existingContact } = await supabase
+        .from('contacts')
+        .select('cpf, numero_processo')
+        .eq('id', contact_id)
+        .maybeSingle();
+
+      const needsCpf = !existingContact?.cpf;
+      const needsProcesso = !existingContact?.numero_processo;
+
+      if ((needsCpf || needsProcesso) && user_message && user_message.trim().length > 0) {
+        const extractResp = await fetch(LOVABLE_AI_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${lovableApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-lite',
+            messages: [
+              { role: 'system', content: 'Você extrai dados estruturados de mensagens. Retorne null para campos não mencionados claramente.' },
+              { role: 'user', content: `Extraia da mensagem abaixo o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX), se mencionados.\n\nMENSAGEM:\n${user_message.substring(0, 2000)}` }
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'extract_contact_data',
+                description: 'Extrair CPF e número de processo trabalhista',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    cpf: { type: ['string', 'null'], description: 'CPF do cliente. null se não mencionado.' },
+                    numero_processo: { type: ['string', 'null'], description: 'Número do processo trabalhista. null se não mencionado.' }
+                  },
+                  required: ['cpf', 'numero_processo'],
+                  additionalProperties: false
+                }
+              }
+            }],
+            tool_choice: { type: 'function', function: { name: 'extract_contact_data' } }
+          })
+        });
+
+        if (extractResp.ok) {
+          const extractData = await extractResp.json();
+          const tc = extractData.choices?.[0]?.message?.tool_calls?.[0];
+          if (tc) {
+            const extracted = JSON.parse(tc.function.arguments);
+            const updates: Record<string, string> = {};
+            if (extracted.cpf && needsCpf) updates.cpf = String(extracted.cpf).trim();
+            if (extracted.numero_processo && needsProcesso) updates.numero_processo = String(extracted.numero_processo).trim();
+            if (Object.keys(updates).length > 0) {
+              await supabase.from('contacts').update(updates).eq('id', contact_id);
+              console.log('[Analyze] Lightweight CPF/processo extraction updated:', updates);
+            }
+          }
+        }
+      }
+    } catch (extractErr) {
+      console.error('[Analyze] Lightweight extraction failed (non-fatal):', extractErr);
+    }
+
     if (!shouldAnalyze) {
       // BASIC UPDATE: Just increment counter and add to history
       const basicMemory = {
