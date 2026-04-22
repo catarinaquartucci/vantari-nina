@@ -366,10 +366,18 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
         p_new_memory: updatedMemory
       });
 
-      // Save CPF and numero_processo if extracted
+      // Save CPF and numero_processo if extracted - only fill if currently empty (no overwrite)
       const contactUpdates: Record<string, string> = {};
-      if (insights.cpf) contactUpdates.cpf = insights.cpf;
-      if (insights.numero_processo) contactUpdates.numero_processo = insights.numero_processo;
+      if (insights.cpf || insights.numero_processo) {
+        const { data: currentContact } = await supabase
+          .from('contacts')
+          .select('cpf, numero_processo')
+          .eq('id', contact_id)
+          .maybeSingle();
+
+        if (insights.cpf && !currentContact?.cpf) contactUpdates.cpf = String(insights.cpf).trim();
+        if (insights.numero_processo && !currentContact?.numero_processo) contactUpdates.numero_processo = String(insights.numero_processo).trim();
+      }
 
       if (Object.keys(contactUpdates).length > 0) {
         const { error: contactUpdateError } = await supabase
