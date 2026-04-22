@@ -1,69 +1,27 @@
 
 
-## Validação robusta no editor de valor do deal
+## Garantir formatação BRL nos cards do Kanban
 
-### Situação atual
-O `commitValue` em `Kanban.tsx` faz uma normalização simples (`replace(/\./g, '')` + `replace(',', '.')` + `Number()`) e só valida `isNaN` e `parsed < 0`. Isso aceita entradas inválidas como `1,2,3`, `abc1500`, `1.5.0,00`, valores extremos (ex: `1e308`), e não dá feedback claro do erro — apenas um toast genérico.
+### Diagnóstico
+O `formatCurrency` em `Kanban.tsx` já existe e usa `Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })`, então tecnicamente os cards já mostram "R$". Preciso confirmar se o problema é:
+- Falta do prefixo "R$" em algum lugar específico (rodapé do card, total da coluna, header do drawer), OU
+- Algum lugar usando `value.toFixed(2)` ou similar sem o `formatCurrency`.
+
+Pelo padrão da pergunta ("atualize também nos cards"), o mais provável é que o card do kanban esteja mostrando o valor sem o "R$" enquanto o drawer já mostra. Vou padronizar todos os pontos de exibição de valor para usar `formatCurrency`, garantindo:
+
+- **Card do kanban (rodapé)**: `R$ 1.500,50`
+- **Total da coluna (header)**: `R$ 1.500,50`
+- **Header do drawer**: `R$ 1.500,50` (já está)
 
 ### Solução
+Em `src/components/Kanban.tsx`:
+1. Auditar os 3 pontos onde `deal.value` ou soma de valores é exibida.
+2. Garantir que todos usem `formatCurrency(value)` — que já retorna a string completa com "R$ " (com espaço não-quebrável padrão do `Intl`).
+3. Se algum ponto estiver renderizando manualmente (ex: `R${value}` ou `value.toFixed(2)`), substituir por `formatCurrency(value)`.
+4. Manter visual consistente: cor verde no valor, mesma tipografia já usada.
 
-**1. Validação com schema Zod dedicado**
+### Arquivo modificado
+- `src/components/Kanban.tsx` — padronizar todos os pontos de exibição de valor monetário para usar `formatCurrency`.
 
-Criar um schema que aceita apenas formato BRL válido e converte para número:
-
-```typescript
-const brlValueSchema = z.string()
-  .trim()
-  .refine(v => v === '' || /^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(v), {
-    message: 'Formato inválido. Use ex: 1500 ou 1.500,50'
-  })
-  .transform(v => {
-    if (v === '') return 0;
-    return Number(v.replace(/\./g, '').replace(',', '.'));
-  })
-  .pipe(
-    z.number()
-      .min(0, 'O valor não pode ser negativo')
-      .max(999_999_999.99, 'Valor máximo: R$ 999.999.999,99')
-      .refine(n => Number.isFinite(n), 'Valor inválido')
-  );
-```
-
-Aceita: `1500`, `1500,50`, `1.500`, `1.500,50`, `999.999,99`, vazio (= 0).
-Rejeita: `abc`, `1,2,3`, `1.5.0`, `1500,999` (3 decimais), negativos, valores acima do teto, notação científica.
-
-**2. Feedback de erro inline (não só toast)**
-
-- Adicionar estado `valueError: string | null`.
-- Validar no `onChange` (validação leve: bloquear caracteres não permitidos, permitindo apenas dígitos, ponto e vírgula) e no `commit` (validação completa via schema).
-- Quando há erro: borda vermelha no input + mensagem em texto pequeno abaixo + bloqueia o save.
-- `Enter` com erro: mantém em modo edição, mostra erro, não fecha.
-- `Esc`: sempre cancela e limpa o erro.
-
-**3. Filtro de input em tempo real**
-
-No `onChange` do input, aplicar uma máscara leve que descarta qualquer caractere fora de `[0-9.,]` antes de salvar no `valueDraft`. Isso evita que o usuário digite letras e melhora a UX sem ser intrusivo.
-
-**4. Tratamento de erro do Supabase**
-
-Envolver `api.updateDealValue` em try/catch com:
-- Reverter `selectedDeal.value` e `deals` ao valor anterior em caso de erro (rollback do otimista).
-- Toast vermelho com mensagem específica do erro do Postgres se disponível, ou genérica.
-- Manter o input aberto com o valor digitado para o usuário tentar de novo.
-
-**5. Inicialização correta do draft**
-
-Ao entrar em modo edição, formatar o valor atual como string BRL (ex: `1500.5` → `"1500,50"`) usando `Intl.NumberFormat`, em vez de mostrar `1500.5`.
-
-### Arquivos modificados
-- `src/components/Kanban.tsx` — schema Zod, estado de erro, máscara no onChange, rollback no catch, formatação inicial do draft.
-
-Sem novas dependências (Zod já está no projeto).
-
-### Comportamento final
-- Usuário digita `abc` → caractere é bloqueado, nada aparece.
-- Usuário digita `1.500,50` → válido, salva como `1500.50`.
-- Usuário digita `1,2,3` e pressiona Enter → input fica com borda vermelha e mensagem "Formato inválido. Use ex: 1500 ou 1.500,50". Não salva.
-- Erro de rede ao salvar → valor volta ao anterior, toast vermelho, input continua aberto.
-- Esc → cancela tudo, limpa erro.
+Sem mudanças de schema, sem novas dependências.
 
