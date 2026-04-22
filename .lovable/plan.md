@@ -1,33 +1,53 @@
 
 
-## Dois ajustes nas Edge Functions
+## Melhorar a aba Contatos com extração retroativa de CPF e Nº de Processo
 
-### 1. Aumentar GROUPING_DELAY_MS de 5s para 10s
-**Arquivo:** `supabase/functions/whatsapp-webhook/index.ts` (linha 13)
-- Alterar `const GROUPING_DELAY_MS = 5000;` para `const GROUPING_DELAY_MS = 10000;`
+### Diagnóstico
+- A função `analyze-conversation` **já extrai** CPF e número de processo das conversas — esse é o motivo pelo qual o Rodrigo Santos tem essas informações.
+- Porém, ela só roda nas mensagens **1, 5, 10, 15, 20...** e a partir do momento em que foi implementada. Por isso, dos **56 contatos**, apenas **3 têm CPF** e **2 têm processo** registrados.
+- Existem dezenas de contatos com 9-45 mensagens já trocadas (ex: Catarina com 45 msgs, Gustavo Nunes com 39, Dra. Camila com 31) onde provavelmente o CPF/processo foi mencionado mas nunca extraído.
+- A aba Contatos atual é uma tabela simples que não exibe CPF nem processo nas colunas — essas informações só aparecem dentro do modal de detalhes.
 
-### 2. Remover fallback de mensagem vazia no nina-orchestrator
-**Arquivo:** `supabase/functions/nina-orchestrator/index.ts` (linhas 879-883)
-- Substituir o bloco de fallback por uma lógica que faz skip: se `aiContent` estiver vazio após o processamento da IA, marcar a mensagem como processada, atualizar o status na fila para `completed`, e retornar sem enviar nenhuma mensagem ao contato.
+### Solução em 3 frentes
 
-```typescript
-// Antes:
-if (!aiContent) {
-  console.warn('[Nina] Empty AI response received, using fallback');
-  aiContent = 'Olá! Como posso ajudar você hoje? 😊';
-}
+**1. Backfill: extrair CPF/processo de todas as conversas históricas**
 
-// Depois:
-if (!aiContent) {
-  console.warn('[Nina] Empty AI response received, skipping send');
-  await supabase
-    .from('messages')
-    .update({ processed_by_nina: true })
-    .eq('id', message.id);
-  continue; // pula para o próximo item da fila
-}
-```
+Criar uma nova edge function `backfill-contact-data` que:
+- Lista todos os contatos sem CPF **ou** sem número de processo
+- Para cada um, lê todas as mensagens da conversa (foco nas mensagens do usuário)
+- Envia o histórico para Lovable AI (`google/gemini-2.5-flash`) com tool calling pedindo APENAS extração de `cpf` e `numero_processo`
+- Atualiza o contato no banco com os valores encontrados
+- Processa em lotes de 5 contatos em paralelo para não sobrecarregar
+- Retorna estatísticas: total processado, quantos receberam CPF, quantos receberam processo
 
-### Deploy
-Após as alterações, deploy de ambas as functions: `whatsapp-webhook` e `nina-orchestrator`.
+Disparar essa função uma vez via botão na própria aba Contatos ("Reprocessar dados dos contatos") visível apenas para admins.
+
+**2. Melhorar a aba Contatos (tabela)**
+
+Refatorar `src/components/Contacts.tsx` para:
+- **Adicionar colunas visíveis** de CPF e Nº do Processo na tabela (com placeholder "—" quando vazio)
+- **Indicador visual de completude**: ícone verde quando tem ambos, amarelo quando tem só um, cinza quando não tem nenhum
+- **Filtros funcionais** (substituir o botão desabilitado): filtrar por "Com CPF", "Com Processo", "Dados completos", "Dados pendentes"
+- **Botão "Reprocessar dados"** no topo (admin-only) que dispara o backfill com toast de progresso
+- **Contador no header**: "X de Y contatos com dados completos"
+- Manter o clique na linha abrindo o modal de detalhes existente
+
+**3. Auto-extração contínua para conversas em andamento**
+
+Garantir que conversas futuras sempre tenham os dados extraídos:
+- Modificar `analyze-conversation` para rodar a extração de CPF/processo em **toda** mensagem (não apenas nas múltiplas de 5), já que é uma chamada barata e crítica. Manter a análise completa de insights apenas a cada 5 mensagens como hoje.
+- Adicionar validação: se já existe CPF/processo no contato, não sobrescrever com valor diferente (apenas preencher se estiver vazio).
+
+### Detalhes técnicos
+- **Nova edge function**: `supabase/functions/backfill-contact-data/index.ts` (sem JWT verification, chamada via supabase.functions.invoke do client)
+- **Componente atualizado**: `src/components/Contacts.tsx` — adicionar colunas, filtros, botão de backfill, contador
+- **Edge function modificada**: `supabase/functions/analyze-conversation/index.ts` — separar extração de CPF/processo em chamada AI leve que roda sempre
+- **Hook de admin check**: usar `useAuth` + query em `user_roles` para mostrar botão de backfill apenas para admins
+- **Sem mudanças de schema**: as colunas `cpf` e `numero_processo` já existem em `contacts`
+
+### Resultado esperado
+- Os 53 contatos sem dados terão CPF e processo extraídos automaticamente das conversas existentes
+- A tabela de contatos passa a exibir essas informações como colunas principais
+- Filtros permitem encontrar rapidamente leads com dados completos vs pendentes
+- Toda nova conversa terá CPF/processo extraídos já na primeira mensagem em que forem mencionados
 
