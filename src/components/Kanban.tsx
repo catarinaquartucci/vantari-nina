@@ -239,6 +239,57 @@ const Kanban: React.FC = () => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  const startEditingValue = () => {
+    if (!selectedDeal) return;
+    const current = selectedDeal.value || 0;
+    setValueDraft(current === 0 ? '' : String(current).replace('.', ','));
+    setIsEditingValue(true);
+  };
+
+  const cancelEditingValue = () => {
+    setIsEditingValue(false);
+    setValueDraft('');
+  };
+
+  const commitValue = async () => {
+    if (!selectedDeal || savingValue) return;
+
+    const normalized = valueDraft.trim().replace(/\./g, '').replace(',', '.');
+    const parsed = normalized === '' ? 0 : Number(normalized);
+
+    if (Number.isNaN(parsed) || parsed < 0) {
+      toast.error('Valor inválido');
+      return;
+    }
+
+    if (parsed === (selectedDeal.value || 0)) {
+      setIsEditingValue(false);
+      return;
+    }
+
+    const previousValue = selectedDeal.value || 0;
+    const dealId = selectedDeal.id;
+
+    // Optimistic update
+    setSelectedDeal({ ...selectedDeal, value: parsed });
+    setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: parsed } : d));
+    setIsEditingValue(false);
+    setSavingValue(true);
+
+    try {
+      await api.updateDealValue(dealId, parsed);
+      toast.success('Valor atualizado');
+    } catch (error) {
+      console.error('Erro ao atualizar valor', error);
+      toast.error('Não foi possível atualizar o valor');
+      // Revert
+      setSelectedDeal(curr => curr && curr.id === dealId ? { ...curr, value: previousValue } : curr);
+      setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: previousValue } : d));
+    } finally {
+      setSavingValue(false);
+    }
+  };
+
   const onDragStart = (e: React.DragEvent, dealId: string) => {
     dragItem.current = dealId;
     e.dataTransfer.effectAllowed = "move";
