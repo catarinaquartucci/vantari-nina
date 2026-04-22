@@ -557,22 +557,35 @@ const Kanban: React.FC = () => {
                             <h2 className="text-2xl font-bold text-white mb-1">{selectedDeal.title}</h2>
                             <div className="flex items-center gap-2 text-slate-400 text-sm flex-wrap">
                                 {isEditingValue ? (
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className="text-emerald-400 font-semibold">R$</span>
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      autoFocus
-                                      value={valueDraft}
-                                      onChange={(e) => setValueDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
-                                      onBlur={commitValue}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
-                                        else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
-                                      }}
-                                      placeholder="0,00"
-                                      className="w-24 h-7 px-2 rounded bg-slate-800 border border-emerald-500/40 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-emerald-400"
-                                    />
+                                  <span className="inline-flex flex-col gap-0.5">
+                                    <span className="inline-flex items-center gap-1">
+                                      <span className="text-emerald-400 font-semibold">R$</span>
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoFocus
+                                        value={valueDraft}
+                                        onChange={(e) => handleValueChange(e.target.value)}
+                                        onBlur={commitValue}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+                                          else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
+                                        }}
+                                        placeholder="0,00"
+                                        aria-invalid={!!valueError}
+                                        className={`w-28 h-7 px-2 rounded bg-slate-800 border text-emerald-400 font-semibold text-sm focus:outline-none ${
+                                          valueError
+                                            ? 'border-red-500/70 focus:border-red-400'
+                                            : 'border-emerald-500/40 focus:border-emerald-400'
+                                        }`}
+                                      />
+                                      {savingValue && <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />}
+                                    </span>
+                                    {valueError && (
+                                      <span className="text-[11px] text-red-400 leading-tight max-w-[260px]">
+                                        {valueError}
+                                      </span>
+                                    )}
                                   </span>
                                 ) : (
                                   <button
