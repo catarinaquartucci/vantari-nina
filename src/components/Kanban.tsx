@@ -516,7 +516,35 @@ const Kanban: React.FC = () => {
                         <div>
                             <h2 className="text-2xl font-bold text-white mb-1">{selectedDeal.title}</h2>
                             <div className="flex items-center gap-2 text-slate-400 text-sm flex-wrap">
-                                <span className="font-semibold text-emerald-400">{formatCurrency(selectedDeal.value)}</span>
+                                {isEditingValue ? (
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className="text-emerald-400 font-semibold">R$</span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      autoFocus
+                                      value={valueDraft}
+                                      onChange={(e) => setValueDraft(e.target.value.replace(/[^0-9.,]/g, ''))}
+                                      onBlur={commitValue}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') { e.preventDefault(); commitValue(); }
+                                        else if (e.key === 'Escape') { e.preventDefault(); cancelEditingValue(); }
+                                      }}
+                                      placeholder="0,00"
+                                      className="w-24 h-7 px-2 rounded bg-slate-800 border border-emerald-500/40 text-emerald-400 font-semibold text-sm focus:outline-none focus:border-emerald-400"
+                                    />
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={startEditingValue}
+                                    title="Clique para editar o valor"
+                                    className="group inline-flex items-center gap-1 font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                                  >
+                                    <span>{formatCurrency(selectedDeal.value || 0)}</span>
+                                    <Pencil className="w-3 h-3 opacity-0 group-hover:opacity-70 transition-opacity" />
+                                  </button>
+                                )}
                                 <span className="w-1 h-1 rounded-full bg-slate-600"></span>
                                 <span className="flex items-center gap-1"><Building className="w-3 h-3" /> {selectedDeal.company}</span>
                                 <span className="w-1 h-1 rounded-full bg-slate-600"></span>
