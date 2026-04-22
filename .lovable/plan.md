@@ -1,53 +1,47 @@
 
 
-## Melhorar a aba Contatos com extração retroativa de CPF e Nº de Processo
+## Tornar o "Valor R$" do deal editável no drawer do Pipeline
 
-### Diagnóstico
-- A função `analyze-conversation` **já extrai** CPF e número de processo das conversas — esse é o motivo pelo qual o Rodrigo Santos tem essas informações.
-- Porém, ela só roda nas mensagens **1, 5, 10, 15, 20...** e a partir do momento em que foi implementada. Por isso, dos **56 contatos**, apenas **3 têm CPF** e **2 têm processo** registrados.
-- Existem dezenas de contatos com 9-45 mensagens já trocadas (ex: Catarina com 45 msgs, Gustavo Nunes com 39, Dra. Camila com 31) onde provavelmente o CPF/processo foi mencionado mas nunca extraído.
-- A aba Contatos atual é uma tabela simples que não exibe CPF nem processo nas colunas — essas informações só aparecem dentro do modal de detalhes.
+### Situação atual
+- O campo `value` já existe na tabela `deals` (numeric, default 0).
+- Aparece em três lugares: total da coluna, card do kanban (rodapé) e cabeçalho do drawer lateral.
+- Hoje **não há nenhuma UI para editar** esse valor — só é definido na criação do deal (e mesmo assim, raramente preenchido).
+- Resultado: todos os deals aparecem com R$ 0,00.
 
-### Solução em 3 frentes
+### Solução
 
-**1. Backfill: extrair CPF/processo de todas as conversas históricas**
+**1. Tornar o valor editável inline no cabeçalho do drawer (`Kanban.tsx`)**
 
-Criar uma nova edge function `backfill-contact-data` que:
-- Lista todos os contatos sem CPF **ou** sem número de processo
-- Para cada um, lê todas as mensagens da conversa (foco nas mensagens do usuário)
-- Envia o histórico para Lovable AI (`google/gemini-2.5-flash`) com tool calling pedindo APENAS extração de `cpf` e `numero_processo`
-- Atualiza o contato no banco com os valores encontrados
-- Processa em lotes de 5 contatos em paralelo para não sobrecarregar
-- Retorna estatísticas: total processado, quantos receberam CPF, quantos receberam processo
+No drawer lateral (que abre ao clicar no card), substituir o texto estático `formatCurrency(selectedDeal.value)` por um campo editável estilo "click-to-edit":
 
-Disparar essa função uma vez via botão na própria aba Contatos ("Reprocessar dados dos contatos") visível apenas para admins.
+- Estado normal: mostra `R$ 0,00` (ou o valor atual) em verde, com um ícone discreto de lápis ao passar o mouse.
+- Ao clicar: vira um input numérico inline com formatação BRL (sem o "R$" no input, apenas números e vírgula).
+- Ao pressionar Enter ou perder o foco: salva no banco via `api.updateDealValue(dealId, value)` e exibe toast de sucesso.
+- Ao pressionar Esc: cancela e volta ao valor anterior.
+- Validação: aceita apenas números ≥ 0; vazio é tratado como 0.
 
-**2. Melhorar a aba Contatos (tabela)**
+**2. Adicionar `updateDealValue` em `src/services/api.ts`**
 
-Refatorar `src/components/Contacts.tsx` para:
-- **Adicionar colunas visíveis** de CPF e Nº do Processo na tabela (com placeholder "—" quando vazio)
-- **Indicador visual de completude**: ícone verde quando tem ambos, amarelo quando tem só um, cinza quando não tem nenhum
-- **Filtros funcionais** (substituir o botão desabilitado): filtrar por "Com CPF", "Com Processo", "Dados completos", "Dados pendentes"
-- **Botão "Reprocessar dados"** no topo (admin-only) que dispara o backfill com toast de progresso
-- **Contador no header**: "X de Y contatos com dados completos"
-- Manter o clique na linha abrindo o modal de detalhes existente
+Nova função análoga a `updateDealOwner`:
+```typescript
+updateDealValue: async (dealId: string, value: number): Promise<void> => {
+  const { error } = await supabase
+    .from('deals')
+    .update({ value })
+    .eq('id', dealId);
+  if (error) throw error;
+}
+```
 
-**3. Auto-extração contínua para conversas em andamento**
+**3. Atualização otimista**
+- Atualiza `selectedDeal.value` e a lista `deals` localmente antes da chamada ao banco.
+- Em caso de erro, reverte e mostra toast vermelho.
+- O realtime subscription em `deals` já recarrega automaticamente para outros usuários conectados, então o total da coluna e o card do kanban refletem a mudança em tempo real.
 
-Garantir que conversas futuras sempre tenham os dados extraídos:
-- Modificar `analyze-conversation` para rodar a extração de CPF/processo em **toda** mensagem (não apenas nas múltiplas de 5), já que é uma chamada barata e crítica. Manter a análise completa de insights apenas a cada 5 mensagens como hoje.
-- Adicionar validação: se já existe CPF/processo no contato, não sobrescrever com valor diferente (apenas preencher se estiver vazio).
+### Arquivos modificados
+- `src/components/Kanban.tsx` — campo editável inline no header do drawer + handler de salvar
+- `src/services/api.ts` — nova função `updateDealValue`
 
-### Detalhes técnicos
-- **Nova edge function**: `supabase/functions/backfill-contact-data/index.ts` (sem JWT verification, chamada via supabase.functions.invoke do client)
-- **Componente atualizado**: `src/components/Contacts.tsx` — adicionar colunas, filtros, botão de backfill, contador
-- **Edge function modificada**: `supabase/functions/analyze-conversation/index.ts` — separar extração de CPF/processo em chamada AI leve que roda sempre
-- **Hook de admin check**: usar `useAuth` + query em `user_roles` para mostrar botão de backfill apenas para admins
-- **Sem mudanças de schema**: as colunas `cpf` e `numero_processo` já existem em `contacts`
-
-### Resultado esperado
-- Os 53 contatos sem dados terão CPF e processo extraídos automaticamente das conversas existentes
-- A tabela de contatos passa a exibir essas informações como colunas principais
-- Filtros permitem encontrar rapidamente leads com dados completos vs pendentes
-- Toda nova conversa terá CPF/processo extraídos já na primeira mensagem em que forem mencionados
+### Comportamento final
+A atendente abre o card do deal → clica no valor `R$ 0,00` no topo → digita o valor (ex: `1500`) → pressiona Enter → o valor é salvo, aparece formatado como `R$ 1.500,00` no header do drawer, no card do kanban e somado no total da coluna. Sem mudanças de schema, sem novos modais.
 
