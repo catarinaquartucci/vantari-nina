@@ -269,28 +269,37 @@ const Kanban: React.FC = () => {
   const startEditingValue = () => {
     if (!selectedDeal) return;
     const current = selectedDeal.value || 0;
-    setValueDraft(current === 0 ? '' : String(current).replace('.', ','));
+    setValueDraft(formatBrlDraft(current));
+    setValueError(null);
     setIsEditingValue(true);
   };
 
   const cancelEditingValue = () => {
     setIsEditingValue(false);
     setValueDraft('');
+    setValueError(null);
+  };
+
+  const handleValueChange = (raw: string) => {
+    // Light mask: keep only digits, dot and comma
+    const filtered = raw.replace(/[^0-9.,]/g, '');
+    setValueDraft(filtered);
+    if (valueError) setValueError(null);
   };
 
   const commitValue = async () => {
     if (!selectedDeal || savingValue) return;
 
-    const normalized = valueDraft.trim().replace(/\./g, '').replace(',', '.');
-    const parsed = normalized === '' ? 0 : Number(normalized);
-
-    if (Number.isNaN(parsed) || parsed < 0) {
-      toast.error('Valor inválido');
+    const result = brlValueSchema.safeParse(valueDraft);
+    if (!result.success) {
+      setValueError(result.error.issues[0]?.message ?? 'Valor inválido');
       return;
     }
+    const parsed = result.data;
 
     if (parsed === (selectedDeal.value || 0)) {
       setIsEditingValue(false);
+      setValueError(null);
       return;
     }
 
@@ -300,18 +309,22 @@ const Kanban: React.FC = () => {
     // Optimistic update
     setSelectedDeal({ ...selectedDeal, value: parsed });
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: parsed } : d));
-    setIsEditingValue(false);
     setSavingValue(true);
+    setValueError(null);
 
     try {
       await api.updateDealValue(dealId, parsed);
       toast.success('Valor atualizado');
-    } catch (error) {
+      setIsEditingValue(false);
+    } catch (error: any) {
       console.error('Erro ao atualizar valor', error);
-      toast.error('Não foi possível atualizar o valor');
-      // Revert
+      const msg = error?.message || 'Não foi possível atualizar o valor';
+      toast.error(msg);
+      // Rollback optimistic update
       setSelectedDeal(curr => curr && curr.id === dealId ? { ...curr, value: previousValue } : curr);
       setDeals(prev => prev.map(d => d.id === dealId ? { ...d, value: previousValue } : d));
+      setValueError(msg);
+      // Keep input open so user can retry
     } finally {
       setSavingValue(false);
     }
