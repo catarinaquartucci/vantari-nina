@@ -510,11 +510,10 @@ const Kanban: React.FC = () => {
                          ))}
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                         <div className="flex items-center gap-1.5 text-slate-300 text-xs font-bold">
-                            <DollarSign className="w-3 h-3 text-emerald-500" />
-                            {formatCurrency(deal.value)}
-                         </div>
+                       <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                          <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold tabular-nums">
+                            {formatCurrency(deal.value || 0)}
+                          </div>
                          <div className="flex items-center gap-2">
                             {deal.dueDate && (
                                 <div className="text-[9px] text-slate-500 flex items-center gap-1" title="Data de previsão">
