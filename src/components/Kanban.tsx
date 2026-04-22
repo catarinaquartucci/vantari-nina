@@ -14,6 +14,32 @@ import { PipelineSettingsModal } from './PipelineSettingsModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { toast } from 'sonner';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
+import { z } from 'zod';
+
+// BRL value schema: accepts "1500", "1500,50", "1.500", "1.500,50", or empty (= 0)
+const brlValueSchema = z
+  .string()
+  .trim()
+  .refine(
+    (v) => v === '' || /^(\d{1,3}(\.\d{3})*|\d+)(,\d{1,2})?$/.test(v),
+    { message: 'Formato inválido. Use ex: 1500 ou 1.500,50' }
+  )
+  .transform((v) => (v === '' ? 0 : Number(v.replace(/\./g, '').replace(',', '.'))))
+  .pipe(
+    z
+      .number()
+      .refine((n) => Number.isFinite(n), { message: 'Valor inválido' })
+      .min(0, { message: 'O valor não pode ser negativo' })
+      .max(999_999_999.99, { message: 'Valor máximo: R$ 999.999.999,99' })
+  );
+
+const formatBrlDraft = (value: number): string => {
+  if (!value) return '';
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+};
 
 const Kanban: React.FC = () => {
   const { sdrName } = useCompanySettings();
