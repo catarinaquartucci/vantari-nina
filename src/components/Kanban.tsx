@@ -28,9 +28,9 @@ const brlValueSchema = z
   .pipe(
     z
       .number()
-      .refine((n) => Number.isFinite(n), { message: 'Valor inválido' })
       .min(0, { message: 'O valor não pode ser negativo' })
       .max(999_999_999.99, { message: 'Valor máximo: R$ 999.999.999,99' })
+      .refine((n) => Number.isFinite(n), { message: 'Valor inválido' })
   );
 
 const formatBrlDraft = (value: number): string => {
