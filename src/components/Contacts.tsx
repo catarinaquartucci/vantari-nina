@@ -55,27 +55,42 @@ const Contacts: React.FC = () => {
         (c.phone || '').includes(term) ||
         (c.email?.toLowerCase() || '').includes(term) ||
         (c.cpf || '').toLowerCase().includes(term) ||
-        (c.numeroProcesso || '').toLowerCase().includes(term);
+        (c.numeroProcesso || '').toLowerCase().includes(term) ||
+        (c.ownerName?.toLowerCase() || '').includes(term);
 
       if (!matchesSearch) return false;
 
       const hasCpf = !!c.cpf;
       const hasProcesso = !!c.numeroProcesso;
 
-      switch (completenessFilter) {
-        case 'complete':
-          return hasCpf && hasProcesso;
-        case 'pending':
-          return !hasCpf || !hasProcesso;
-        case 'with_cpf':
-          return hasCpf;
-        case 'with_processo':
-          return hasProcesso;
+      const passesCompleteness = (() => {
+        switch (completenessFilter) {
+          case 'complete':
+            return hasCpf && hasProcesso;
+          case 'pending':
+            return !hasCpf || !hasProcesso;
+          case 'with_cpf':
+            return hasCpf;
+          case 'with_processo':
+            return hasProcesso;
+          default:
+            return true;
+        }
+      })();
+      if (!passesCompleteness) return false;
+
+      switch (ownerFilter) {
+        case 'mine':
+          return !!user?.id && c.ownerUserId === user.id;
+        case 'unassigned':
+          return !c.ownerId;
+        case 'assigned':
+          return !!c.ownerId;
         default:
           return true;
       }
     });
-  }, [contacts, searchTerm, completenessFilter]);
+  }, [contacts, searchTerm, completenessFilter, ownerFilter, user?.id]);
 
   const stats = useMemo(() => {
     const complete = contacts.filter((c) => c.cpf && c.numeroProcesso).length;
