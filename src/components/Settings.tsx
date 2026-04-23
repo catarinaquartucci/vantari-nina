@@ -98,6 +98,10 @@ const Settings: React.FC = () => {
               <Plug className="w-4 h-4" />
               APIs
             </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="w-4 h-4" />
+              Aparência
+            </TabsTrigger>
             <TabsTrigger value="docs" className="gap-2">
               <BookOpen className="w-4 h-4" />
               Documentação
