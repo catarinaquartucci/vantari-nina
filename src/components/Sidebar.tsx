@@ -7,7 +7,7 @@ import { Sidebar, SidebarBody, SidebarLink, useSidebar } from '@/components/ui/s
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import viaIcon from '@/assets/icon-via.png';
+import vantariLogo from '@/assets/vantari-logo.png';
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,12 +23,11 @@ const menuItems = [
 const Logo = ({ companyName }: { companyName: string }) => {
   return (
     <Link to="/dashboard" className="flex items-center space-x-3 py-1">
-      <div className="relative w-10 h-10 flex items-center justify-center flex-shrink-0">
-        <div className="absolute inset-0 bg-primary/20 blur-lg rounded-full" />
-        <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20 p-1.5">
-          <img src={viaIcon} alt="Logo" className="w-full h-full object-contain" />
-        </div>
-      </div>
+      <img
+        src={vantariLogo}
+        alt="Vantari"
+        className="h-10 w-auto flex-shrink-0 object-contain"
+      />
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -45,12 +44,11 @@ const Logo = ({ companyName }: { companyName: string }) => {
 const LogoIcon = () => {
   return (
     <Link to="/dashboard" className="flex items-center py-1">
-      <div className="relative w-10 h-10 flex items-center justify-center flex-shrink-0">
-        <div className="absolute inset-0 bg-primary/20 blur-lg rounded-full" />
-        <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-lg shadow-primary/20 p-1.5">
-          <img src={viaIcon} alt="Logo" className="w-full h-full object-contain" />
-        </div>
-      </div>
+      <img
+        src={vantariLogo}
+        alt="Vantari"
+        className="h-10 w-auto flex-shrink-0 object-contain"
+      />
     </Link>
   );
 };
