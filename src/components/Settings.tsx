@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, UserPlus } from 'lucide-react';
+import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, UserPlus, Palette } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
+import AppearanceSettings from './settings/AppearanceSettings';
 import SystemRoadmap from './SystemRoadmap';
 import InviteSettings from './settings/InviteSettings';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
@@ -97,6 +98,10 @@ const Settings: React.FC = () => {
               <Plug className="w-4 h-4" />
               APIs
             </TabsTrigger>
+            <TabsTrigger value="appearance" className="gap-2">
+              <Palette className="w-4 h-4" />
+              Aparência
+            </TabsTrigger>
             <TabsTrigger value="docs" className="gap-2">
               <BookOpen className="w-4 h-4" />
               Documentação
@@ -153,6 +158,10 @@ const Settings: React.FC = () => {
 
         <TabsContent value="apis">
           <ApiSettings ref={apiRef} />
+        </TabsContent>
+
+        <TabsContent value="appearance">
+          <AppearanceSettings />
         </TabsContent>
 
         <TabsContent value="docs">

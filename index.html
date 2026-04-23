@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="dark">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,6 +18,25 @@
   <meta property="og:description" content="Nosso sistema de atendimento inteligente.">
   <meta name="twitter:description" content="Nosso sistema de atendimento inteligente.">
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem('vantari-theme');
+        var theme = stored || 'dark';
+        var resolved = theme === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+        if (resolved === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        document.documentElement.style.colorScheme = resolved;
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
 </head>
   <body class="min-h-screen bg-background font-sans antialiased">
     <div id="root"></div>
