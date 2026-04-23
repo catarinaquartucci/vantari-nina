@@ -327,7 +327,15 @@ export const api = {
   fetchContacts: async (): Promise<Contact[]> => {
     const { data, error } = await supabase
       .from('contacts')
-      .select('*')
+      .select(`
+        *,
+        deals(
+          id,
+          owner_id,
+          created_at,
+          owner:team_members(id, name, avatar, user_id)
+        )
+      `)
       .order('last_activity', { ascending: false })
       .limit(100);
 
@@ -340,16 +348,28 @@ export const api = {
       return []; // Return empty array if no data
     }
 
-    return data.map(c => ({
-      id: c.id,
-      name: c.name || c.call_name || c.phone_number,
-      phone: c.phone_number,
-      email: c.email || '',
-      status: 'lead' as const,
-      lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
-      cpf: (c as any).cpf || null,
-      numeroProcesso: (c as any).numero_processo || null,
-    }));
+    return data.map((c: any) => {
+      // Pick the most recent deal that has an owner
+      const dealsWithOwner = (c.deals || [])
+        .filter((d: any) => d.owner_id && d.owner)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const topDeal = dealsWithOwner[0];
+
+      return {
+        id: c.id,
+        name: c.name || c.call_name || c.phone_number,
+        phone: c.phone_number,
+        email: c.email || '',
+        status: 'lead' as const,
+        lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
+        cpf: c.cpf || null,
+        numeroProcesso: c.numero_processo || null,
+        ownerId: topDeal?.owner?.id || null,
+        ownerName: topDeal?.owner?.name || null,
+        ownerAvatar: topDeal?.owner?.avatar || null,
+        ownerUserId: topDeal?.owner?.user_id || null,
+      };
+    });
   },
 
   /**
@@ -1257,12 +1277,13 @@ export const api = {
   fetchConversations: async (): Promise<UIConversation[]> => {
     console.log('[API] Fetching conversations from Supabase...');
     
-    // Fetch active conversations with contact data
+    // Fetch active conversations with contact data and assigned user
     const { data: conversations, error: convError } = await supabase
       .from('conversations')
       .select(`
         *,
-        contact:contacts(*)
+        contact:contacts(*),
+        assigned_user:team_members!conversations_assigned_user_id_fkey(id, name, avatar)
       `)
       .eq('is_active', true)
       .order('last_message_at', { ascending: false })
