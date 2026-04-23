@@ -370,8 +370,24 @@ const ChatInterface: React.FC = () => {
                      chat.lastMessage || 'Sem mensagens'}
                   </p>
                   
-                  <div className="flex items-center mt-2 gap-1.5">
+                  <div className="flex items-center mt-2 gap-1.5 flex-wrap">
                     {renderStatusBadge(chat.status)}
+                    {chat.status === 'human' && (
+                      chat.assignedUserName ? (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-emerald-500/10 text-emerald-300 border-emerald-500/30 flex items-center gap-1 max-w-[140px]"
+                          title={`Atribuído a ${chat.assignedUserName}`}
+                        >
+                          <User className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{chat.assignedUserName}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-slate-800/60 text-slate-400 border-slate-700 flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          Não atribuído
+                        </span>
+                      )
+                    )}
                     {chat.tags.slice(0, 1).map(tag => (
                       <span key={tag} className="px-2 py-0.5 bg-slate-800/80 border border-slate-700 text-slate-400 text-[10px] rounded-md font-medium">
                         {tag}
