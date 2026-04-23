@@ -50,6 +50,16 @@ export function useConversations() {
         console.error('[Realtime] Error fetching conversation:', convError);
         return;
       }
+
+      // Resolve assigned_user manually (no FK between conversations.assigned_user_id and team_members)
+      if ((convData as any).assigned_user_id) {
+        const { data: member } = await supabase
+          .from('team_members')
+          .select('id, name, avatar')
+          .eq('id', (convData as any).assigned_user_id)
+          .maybeSingle();
+        (convData as any).assigned_user = member || null;
+      }
       
       const { data: messages, error: msgError } = await supabase
         .from('messages')
