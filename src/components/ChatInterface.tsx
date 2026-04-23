@@ -370,8 +370,24 @@ const ChatInterface: React.FC = () => {
                      chat.lastMessage || 'Sem mensagens'}
                   </p>
                   
-                  <div className="flex items-center mt-2 gap-1.5">
+                  <div className="flex items-center mt-2 gap-1.5 flex-wrap">
                     {renderStatusBadge(chat.status)}
+                    {chat.status === 'human' && (
+                      chat.assignedUserName ? (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-emerald-500/10 text-emerald-300 border-emerald-500/30 flex items-center gap-1 max-w-[140px]"
+                          title={`Atribuído a ${chat.assignedUserName}`}
+                        >
+                          <User className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{chat.assignedUserName}</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-slate-800/60 text-slate-400 border-slate-700 flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          Não atribuído
+                        </span>
+                      )
+                    )}
                     {chat.tags.slice(0, 1).map(tag => (
                       <span key={tag} className="px-2 py-0.5 bg-slate-800/80 border border-slate-700 text-slate-400 text-[10px] rounded-md font-medium">
                         {tag}
@@ -408,9 +424,18 @@ const ChatInterface: React.FC = () => {
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
                 </div>
                 <div className="ml-3">
-                  <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
                     {activeChat.contactName}
                     {renderStatusBadge(activeChat.status)}
+                    {activeChat.status === 'human' && (
+                      activeChat.assignedUserName ? (
+                        <span className="text-[11px] font-medium text-emerald-400 flex items-center gap-1">
+                          · atribuído a <span className="text-emerald-300">{activeChat.assignedUserName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-medium text-amber-400">· não atribuído</span>
+                      )
+                    )}
                   </h2>
                   <p className="text-xs text-cyan-500 font-medium">{activeChat.contactPhone}</p>
                 </div>
@@ -684,11 +709,41 @@ const ChatInterface: React.FC = () => {
                     <User className="w-4 h-4" />
                     Responsável
                   </h4>
+
+                  {/* Current owner highlight */}
+                  {activeChat.assignedUserId && activeChat.assignedUserName ? (
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                      {activeChat.assignedUserAvatar ? (
+                        <img
+                          src={activeChat.assignedUserAvatar}
+                          alt={activeChat.assignedUserName}
+                          className="w-9 h-9 rounded-full object-cover border border-emerald-500/40"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 text-sm font-bold">
+                          {activeChat.assignedUserName.substring(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold">Atribuído a</div>
+                        <div className="text-sm text-slate-100 font-semibold truncate">{activeChat.assignedUserName}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/40 border border-slate-700/50">
+                      <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div className="text-sm text-slate-400">Sem responsável humano</div>
+                    </div>
+                  )}
+
                   <select
                     value={activeChat.assignedUserId || ''}
                     onChange={(e) => {
                       const userId = e.target.value || null;
-                      assignConversation(activeChat.id, userId);
+                      const member = teamMembers.find(m => m.id === userId);
+                      assignConversation(activeChat.id, userId, member ? { name: member.name, avatar: member.avatar } : undefined);
                       toast.success('Conversa atribuída. Deal atualizado automaticamente.');
                     }}
                     className="w-full bg-slate-950/50 border border-slate-800 rounded-lg p-3 text-sm text-slate-300 focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 outline-none transition-all"

@@ -327,7 +327,10 @@ export const api = {
   fetchContacts: async (): Promise<Contact[]> => {
     const { data, error } = await supabase
       .from('contacts')
-      .select('*')
+      .select(`
+        *,
+        deals(id, owner_id, created_at)
+      `)
       .order('last_activity', { ascending: false })
       .limit(100);
 
@@ -340,16 +343,48 @@ export const api = {
       return []; // Return empty array if no data
     }
 
-    return data.map(c => ({
-      id: c.id,
-      name: c.name || c.call_name || c.phone_number,
-      phone: c.phone_number,
-      email: c.email || '',
-      status: 'lead' as const,
-      lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
-      cpf: (c as any).cpf || null,
-      numeroProcesso: (c as any).numero_processo || null,
-    }));
+    // Collect all unique owner_ids from the most recent deals to resolve names in one query
+    const ownerIdsByContact = new Map<string, string>();
+    data.forEach((c: any) => {
+      const dealsWithOwner = (c.deals || [])
+        .filter((d: any) => !!d.owner_id)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      const topDeal = dealsWithOwner[0];
+      if (topDeal?.owner_id) ownerIdsByContact.set(c.id, topDeal.owner_id);
+    });
+
+    const allOwnerIds = Array.from(new Set(ownerIdsByContact.values()));
+    let membersMap: Map<string, { id: string; name: string; avatar: string | null; user_id: string | null }> = new Map();
+    if (allOwnerIds.length > 0) {
+      const { data: members } = await supabase
+        .from('team_members')
+        .select('id, name, avatar, user_id')
+        .in('id', allOwnerIds);
+      (members || []).forEach((m: any) => membersMap.set(m.id, m));
+    }
+
+    return data.map((c: any) => {
+      const ownerId = ownerIdsByContact.get(c.id) || null;
+      const owner = ownerId ? membersMap.get(ownerId) : null;
+
+      return {
+        id: c.id,
+        name: c.name || c.call_name || c.phone_number,
+        phone: c.phone_number,
+        email: c.email || '',
+        status: 'lead' as const,
+        lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
+        cpf: c.cpf || null,
+        numeroProcesso: c.numero_processo || null,
+        ownerId: owner?.id || null,
+        ownerName: owner?.name || null,
+        ownerAvatar: owner?.avatar || null,
+        ownerUserId: owner?.user_id || null,
+      };
+    });
   },
 
   /**
@@ -1279,6 +1314,33 @@ export const api = {
     }
 
     console.log(`[API] Found ${conversations.length} conversations`);
+
+    // Fetch team members to resolve assigned_user_id -> name/avatar (no FK constraint, manual join)
+    const assignedIds = Array.from(
+      new Set(
+        conversations
+          .map((c: any) => c.assigned_user_id)
+          .filter((id: string | null) => !!id)
+      )
+    ) as string[];
+
+    let membersMap: Map<string, { id: string; name: string; avatar: string | null }> = new Map();
+    if (assignedIds.length > 0) {
+      const { data: members } = await supabase
+        .from('team_members')
+        .select('id, name, avatar')
+        .in('id', assignedIds);
+      (members || []).forEach((m: any) => membersMap.set(m.id, m));
+    }
+
+    // Attach assigned_user to each conversation row before transformation
+    conversations.forEach((conv: any) => {
+      if (conv.assigned_user_id && membersMap.has(conv.assigned_user_id)) {
+        conv.assigned_user = membersMap.get(conv.assigned_user_id);
+      } else {
+        conv.assigned_user = null;
+      }
+    });
 
     // Fetch messages for each conversation
     const conversationsWithMessages: UIConversation[] = await Promise.all(

@@ -50,6 +50,16 @@ export function useConversations() {
         console.error('[Realtime] Error fetching conversation:', convError);
         return;
       }
+
+      // Resolve assigned_user manually (no FK between conversations.assigned_user_id and team_members)
+      if ((convData as any).assigned_user_id) {
+        const { data: member } = await supabase
+          .from('team_members')
+          .select('id, name, avatar')
+          .eq('id', (convData as any).assigned_user_id)
+          .maybeSingle();
+        (convData as any).assigned_user = member || null;
+      }
       
       const { data: messages, error: msgError } = await supabase
         .from('messages')
@@ -465,15 +475,28 @@ export function useConversations() {
   }, []);
 
   // Assign conversation (and sync with deal)
-  const assignConversation = useCallback(async (conversationId: string, userId: string | null) => {
+  const assignConversation = useCallback(async (
+    conversationId: string,
+    userId: string | null,
+    userInfo?: { name: string | null; avatar: string | null }
+  ) => {
     const conv = conversations.find(c => c.id === conversationId);
     if (!conv) return;
 
-    // Optimistic UI update
+    const previousAssignedUserId = conv.assignedUserId;
+    const previousAssignedUserName = conv.assignedUserName;
+    const previousAssignedUserAvatar = conv.assignedUserAvatar;
+
+    // Optimistic UI update — also update name/avatar so the chip refreshes immediately
     setConversations(prev => {
       return prev.map(c => {
         if (c.id === conversationId) {
-          return { ...c, assignedUserId: userId };
+          return {
+            ...c,
+            assignedUserId: userId,
+            assignedUserName: userId ? (userInfo?.name ?? null) : null,
+            assignedUserAvatar: userId ? (userInfo?.avatar ?? null) : null,
+          };
         }
         return c;
       });
@@ -489,7 +512,12 @@ export function useConversations() {
       setConversations(prev => {
         return prev.map(c => {
           if (c.id === conversationId) {
-            return { ...c, assignedUserId: conv.assignedUserId };
+            return {
+              ...c,
+              assignedUserId: previousAssignedUserId,
+              assignedUserName: previousAssignedUserName,
+              assignedUserAvatar: previousAssignedUserAvatar,
+            };
           }
           return c;
         });

@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Filter, MoreHorizontal, UserPlus, MessageSquare, Loader2, Mail, Phone, Users, FileText, IdCard, CheckCircle2, AlertCircle, Circle, RefreshCw } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, UserPlus, MessageSquare, Loader2, Mail, Phone, Users, FileText, IdCard, CheckCircle2, AlertCircle, Circle, RefreshCw, User, Bot } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './Button';
 import { api } from '../services/api';
 import { Contact } from '../types';
 import ContactDetailModal from './ContactDetailModal';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -17,6 +18,7 @@ import {
 } from './ui/select';
 
 type CompletenessFilter = 'all' | 'complete' | 'pending' | 'with_cpf' | 'with_processo';
+type OwnerFilter = 'all' | 'mine' | 'unassigned' | 'assigned';
 
 const Contacts: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -24,9 +26,11 @@ const Contacts: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [completenessFilter, setCompletenessFilter] = useState<CompletenessFilter>('all');
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
   const [backfilling, setBackfilling] = useState(false);
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { user } = useAuth();
 
   const loadContacts = async () => {
     try {
@@ -51,27 +55,42 @@ const Contacts: React.FC = () => {
         (c.phone || '').includes(term) ||
         (c.email?.toLowerCase() || '').includes(term) ||
         (c.cpf || '').toLowerCase().includes(term) ||
-        (c.numeroProcesso || '').toLowerCase().includes(term);
+        (c.numeroProcesso || '').toLowerCase().includes(term) ||
+        (c.ownerName?.toLowerCase() || '').includes(term);
 
       if (!matchesSearch) return false;
 
       const hasCpf = !!c.cpf;
       const hasProcesso = !!c.numeroProcesso;
 
-      switch (completenessFilter) {
-        case 'complete':
-          return hasCpf && hasProcesso;
-        case 'pending':
-          return !hasCpf || !hasProcesso;
-        case 'with_cpf':
-          return hasCpf;
-        case 'with_processo':
-          return hasProcesso;
+      const passesCompleteness = (() => {
+        switch (completenessFilter) {
+          case 'complete':
+            return hasCpf && hasProcesso;
+          case 'pending':
+            return !hasCpf || !hasProcesso;
+          case 'with_cpf':
+            return hasCpf;
+          case 'with_processo':
+            return hasProcesso;
+          default:
+            return true;
+        }
+      })();
+      if (!passesCompleteness) return false;
+
+      switch (ownerFilter) {
+        case 'mine':
+          return !!user?.id && c.ownerUserId === user.id;
+        case 'unassigned':
+          return !c.ownerId;
+        case 'assigned':
+          return !!c.ownerId;
         default:
           return true;
       }
     });
-  }, [contacts, searchTerm, completenessFilter]);
+  }, [contacts, searchTerm, completenessFilter, ownerFilter, user?.id]);
 
   const stats = useMemo(() => {
     const complete = contacts.filter((c) => c.cpf && c.numeroProcesso).length;
@@ -210,7 +229,7 @@ const Contacts: React.FC = () => {
             className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 placeholder:text-slate-600 transition-all"
           />
         </div>
-        <div className="w-full sm:w-64">
+        <div className="w-full sm:w-56">
           <Select value={completenessFilter} onValueChange={(v) => setCompletenessFilter(v as CompletenessFilter)}>
             <SelectTrigger className="bg-slate-950 border-slate-800 text-slate-200">
               <div className="flex items-center gap-2">
@@ -224,6 +243,22 @@ const Contacts: React.FC = () => {
               <SelectItem value="pending">Dados pendentes</SelectItem>
               <SelectItem value="with_cpf">Com CPF</SelectItem>
               <SelectItem value="with_processo">Com Processo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-full sm:w-56">
+          <Select value={ownerFilter} onValueChange={(v) => setOwnerFilter(v as OwnerFilter)}>
+            <SelectTrigger className="bg-slate-950 border-slate-800 text-slate-200">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-500" />
+                <SelectValue placeholder="Responsável" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos responsáveis</SelectItem>
+              <SelectItem value="mine">Atribuídos a mim</SelectItem>
+              <SelectItem value="assigned">Com responsável</SelectItem>
+              <SelectItem value="unassigned">Sem responsável</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -256,6 +291,7 @@ const Contacts: React.FC = () => {
                   <th className="px-4 py-4">CPF</th>
                   <th className="px-4 py-4">Nº Processo</th>
                   <th className="px-4 py-4">Status</th>
+                  <th className="px-4 py-4">Responsável</th>
                   <th className="px-4 py-4">Última Interação</th>
                   <th className="px-4 py-4 text-right">Ações</th>
                 </tr>
@@ -316,6 +352,31 @@ const Contacts: React.FC = () => {
                       <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border ${getStatusColor(contact.status)}`}>
                         {contact.status === 'customer' ? 'Cliente' : contact.status === 'lead' ? 'Lead' : 'Churned'}
                       </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      {contact.ownerName ? (
+                        <div className="flex items-center gap-2 min-w-0">
+                          {contact.ownerAvatar ? (
+                            <img
+                              src={contact.ownerAvatar}
+                              alt={contact.ownerName}
+                              className="w-7 h-7 rounded-full object-cover border border-emerald-500/30 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold text-emerald-300 shrink-0">
+                              {contact.ownerName.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-xs text-slate-200 truncate" title={contact.ownerName}>
+                            {contact.ownerName}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <Bot className="w-4 h-4 text-violet-400/70" />
+                          <span>Nina (IA)</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-slate-400 text-xs">
