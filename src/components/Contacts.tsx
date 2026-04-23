@@ -354,6 +354,31 @@ const Contacts: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4">
+                      {contact.ownerName ? (
+                        <div className="flex items-center gap-2 min-w-0">
+                          {contact.ownerAvatar ? (
+                            <img
+                              src={contact.ownerAvatar}
+                              alt={contact.ownerName}
+                              className="w-7 h-7 rounded-full object-cover border border-emerald-500/30 shrink-0"
+                            />
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold text-emerald-300 shrink-0">
+                              {contact.ownerName.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-xs text-slate-200 truncate" title={contact.ownerName}>
+                            {contact.ownerName}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                          <Bot className="w-4 h-4 text-violet-400/70" />
+                          <span>Nina (IA)</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
                       <span className="text-slate-400 text-xs">
                         {new Date(contact.lastContact).toLocaleDateString('pt-BR')}
                       </span>
