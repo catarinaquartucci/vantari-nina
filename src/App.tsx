@@ -17,6 +17,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { Toaster } from 'sonner';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { useOnboardingStatus } from './hooks/useOnboardingStatus';
+import { useTheme } from './hooks/useTheme';
 
 // Componente de Layout que envolve a aplicação principal
 const AppLayout: React.FC = () => {
@@ -56,6 +57,7 @@ const AppLayout: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const { resolvedTheme } = useTheme();
   return (
     <AuthProvider>
       <CompanySettingsProvider>
@@ -88,7 +90,7 @@ const App: React.FC = () => {
         <Toaster 
           position="top-right"
           richColors
-          theme="dark"
+          theme={resolvedTheme}
         />
       </CompanySettingsProvider>
     </AuthProvider>

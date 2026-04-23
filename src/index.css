@@ -185,11 +185,11 @@
   }
 
   .bg-card-dark {
-    background: rgba(255, 255, 255, 0.03);
+    background: hsl(var(--card) / 0.5);
   }
 
   .border-subtle {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: hsl(var(--border) / 0.6);
   }
 
   .gradient-cyan {
@@ -214,8 +214,8 @@
       90deg,
       transparent,
       transparent 60px,
-      rgba(255, 255, 255, 0.015) 60px,
-      rgba(255, 255, 255, 0.015) 120px
+      hsl(var(--foreground) / 0.015) 60px,
+      hsl(var(--foreground) / 0.015) 120px
     );
   }
 
