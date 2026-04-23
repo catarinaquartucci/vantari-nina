@@ -8,7 +8,6 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import viaIcon from '@/assets/icon-via.png';
-import viaLogoWhite from '@/assets/logo-via-white.png';
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -112,22 +111,6 @@ const SidebarContent = () => {
           ))}
         </nav>
       </div>
-
-      {/* VIA Logo - Footer */}
-      {open && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          className="py-4 flex justify-center"
-        >
-          <img 
-            src={viaLogoWhite} 
-            alt="VIA" 
-            className="h-6 opacity-60 hover:opacity-100 transition-opacity"
-          />
-        </motion.div>
-      )}
 
       {/* User Footer */}
       <div className="border-t border-border/50 pt-4">
