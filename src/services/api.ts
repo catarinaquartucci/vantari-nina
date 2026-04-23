@@ -1283,7 +1283,7 @@ export const api = {
       .select(`
         *,
         contact:contacts(*),
-        assigned_user:team_members!conversations_assigned_user_id_fkey(id, name, avatar)
+        assigned_user:team_members!assigned_user_id(id, name, avatar)
       `)
       .eq('is_active', true)
       .order('last_message_at', { ascending: false })
