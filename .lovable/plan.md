@@ -1,15 +1,27 @@
 
 
-## Re-disparar deploy após erro transitório de S3
+## Verificar mudanças visuais no preview
 
-### Contexto
-O último build falhou com `ServiceUnavailable: Reduce your concurrent request rate` no upload para S3. Isso é throttling temporário da infraestrutura de deploy — o código está correto e as mudanças visuais (logo Vantari, cores teal/verde, Nunito Sans) já estão aplicadas nos arquivos.
+Vou abrir o preview em `/dashboard` e tirar screenshots para confirmar:
 
-### Ação
-Forçar um novo build/upload fazendo uma alteração mínima e inofensiva em `index.html` (adicionar um comentário). Isso dispara o pipeline de deploy novamente, que agora deve concluir sem o erro de rate limit.
+1. **Logo Vantari** aparece no sidebar (expandido e colapsado).
+2. **Paleta teal/verde** aplicada (cores de `--primary` e `--secondary`).
+3. **Nunito Sans** carregada como fonte padrão.
+4. **Toggle de tema** funcional em Configurações → Aparência (alternar Claro/Escuro/Sistema e confirmar que a UI muda em tempo real).
 
-### Arquivo modificado
-- `index.html` — adicionar um comentário HTML (`<!-- v2 -->`) no topo para invalidar o cache de build.
+### Passos de verificação
+- `navigate_to_sandbox` em `/dashboard` → screenshot do estado atual (tema escuro).
+- Navegar para `/settings` (ou rota equivalente da tela de Configurações) → abrir aba "Aparência" → screenshot.
+- Clicar em **Claro** → screenshot para confirmar troca instantânea de tema.
+- Clicar em **Escuro** novamente para restaurar e confirmar persistência.
+- Voltar a `/dashboard` → screenshot final no tema escolhido.
 
-Sem mudanças de lógica, estilo ou dependências. Se as mudanças visuais ainda não aparecerem após o novo deploy, pode ser cache do navegador — basta dar um hard refresh (Ctrl+Shift+R / Cmd+Shift+R).
+### Resultado esperado
+Relatório curto com:
+- ✅/❌ Logo Vantari visível
+- ✅/❌ Cores teal/verde aplicadas (botões, sidebar ativo, gradientes)
+- ✅/❌ Nunito Sans renderizando
+- ✅/❌ Troca de tema funcionando
+
+Se algo não estiver visível, indico se é cache do navegador (sugerir hard refresh) ou bug real no código que precisa correção.
 
