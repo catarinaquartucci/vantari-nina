@@ -28,6 +28,7 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          hover: "hsl(var(--primary-hover))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -45,6 +46,14 @@ export default {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
@@ -52,6 +61,23 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        brand: {
+          dark: "hsl(210 40% 8%)",
+          teal: "hsl(185 80% 26%)",
+          "teal-light": "hsl(165 100% 35%)",
+        },
+        cyan: {
+          DEFAULT: "hsl(185 80% 26%)",
+          foreground: "hsl(0 0% 100%)",
+        },
+        neonGreen: {
+          DEFAULT: "hsl(160 100% 40%)",
+          foreground: "hsl(210 40% 8%)",
+        },
+        yellow: {
+          DEFAULT: "hsl(45 100% 50%)",
+          foreground: "hsl(210 91% 9%)",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
@@ -63,6 +89,21 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+      },
+      fontFamily: {
+        sans: ['Nunito Sans', 'system-ui', 'sans-serif'],
+      },
+      fontWeight: {
+        light: '300',
+        normal: '400',
+        medium: '600',
+        semibold: '700',
+        bold: '800',
+        heavy: '900',
+      },
+      letterSpacing: {
+        brand: '0.35em',
+        'brand-wide': '0.5em',
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -78,10 +119,22 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "confetti-fall": {
+          "0%": { transform: "translateY(-10vh) rotate(0deg)", opacity: "1" },
+          "100%": { transform: "translateY(110vh) rotate(720deg)", opacity: "0" },
+        },
+        "confetti-spin": {
+          "0%, 100%": { transform: "rotateX(0deg) rotateY(0deg)" },
+          "25%": { transform: "rotateX(180deg) rotateY(0deg)" },
+          "50%": { transform: "rotateX(180deg) rotateY(180deg)" },
+          "75%": { transform: "rotateX(0deg) rotateY(180deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "confetti-fall": "confetti-fall 4s ease-in-out forwards",
+        "confetti-spin": "confetti-spin 1s linear infinite",
       },
     },
   },
