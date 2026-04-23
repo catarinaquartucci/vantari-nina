@@ -408,7 +408,7 @@ const ChatInterface: React.FC = () => {
 
       {/* Right Area: Chat Window & Profile */}
       {activeChat ? (
-        <div className="flex-1 flex overflow-hidden bg-[#0B0E14]">
+        <div className="flex-1 flex overflow-hidden bg-background">
           {/* Main Chat Content */}
           <div className="flex-1 flex flex-col min-w-0 relative">
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
@@ -829,8 +829,8 @@ const ChatInterface: React.FC = () => {
 
         </div>
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center bg-[#0B0E14] relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-slate-900/20 to-transparent"></div>
+        <div className="flex-1 flex flex-col items-center justify-center bg-background relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-b from-muted/20 to-transparent"></div>
           <div className="relative z-10 flex flex-col items-center p-8 text-center max-w-md">
             <div className="w-24 h-24 bg-slate-900 rounded-full flex items-center justify-center mb-6 shadow-2xl border border-slate-800 relative group">
               <div className="absolute inset-0 bg-cyan-500/20 rounded-full blur-xl group-hover:bg-cyan-500/30 transition-all duration-1000"></div>
