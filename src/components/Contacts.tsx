@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Search, Filter, MoreHorizontal, UserPlus, MessageSquare, Loader2, Mail, Phone, Users, FileText, IdCard, CheckCircle2, AlertCircle, Circle, RefreshCw } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, UserPlus, MessageSquare, Loader2, Mail, Phone, Users, FileText, IdCard, CheckCircle2, AlertCircle, Circle, RefreshCw, User, Bot } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from './Button';
 import { api } from '../services/api';
 import { Contact } from '../types';
 import ContactDetailModal from './ContactDetailModal';
 import { useIsAdmin } from '@/hooks/useIsAdmin';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
@@ -17,6 +18,7 @@ import {
 } from './ui/select';
 
 type CompletenessFilter = 'all' | 'complete' | 'pending' | 'with_cpf' | 'with_processo';
+type OwnerFilter = 'all' | 'mine' | 'unassigned' | 'assigned';
 
 const Contacts: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -24,9 +26,11 @@ const Contacts: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [completenessFilter, setCompletenessFilter] = useState<CompletenessFilter>('all');
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('all');
   const [backfilling, setBackfilling] = useState(false);
   const navigate = useNavigate();
   const { isAdmin } = useIsAdmin();
+  const { user } = useAuth();
 
   const loadContacts = async () => {
     try {
