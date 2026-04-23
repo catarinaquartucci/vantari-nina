@@ -229,7 +229,7 @@ const Contacts: React.FC = () => {
             className="w-full pl-9 pr-4 py-2.5 rounded-lg bg-slate-950 border border-slate-800 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 placeholder:text-slate-600 transition-all"
           />
         </div>
-        <div className="w-full sm:w-64">
+        <div className="w-full sm:w-56">
           <Select value={completenessFilter} onValueChange={(v) => setCompletenessFilter(v as CompletenessFilter)}>
             <SelectTrigger className="bg-slate-950 border-slate-800 text-slate-200">
               <div className="flex items-center gap-2">
@@ -243,6 +243,22 @@ const Contacts: React.FC = () => {
               <SelectItem value="pending">Dados pendentes</SelectItem>
               <SelectItem value="with_cpf">Com CPF</SelectItem>
               <SelectItem value="with_processo">Com Processo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-full sm:w-56">
+          <Select value={ownerFilter} onValueChange={(v) => setOwnerFilter(v as OwnerFilter)}>
+            <SelectTrigger className="bg-slate-950 border-slate-800 text-slate-200">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-500" />
+                <SelectValue placeholder="Responsável" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos responsáveis</SelectItem>
+              <SelectItem value="mine">Atribuídos a mim</SelectItem>
+              <SelectItem value="assigned">Com responsável</SelectItem>
+              <SelectItem value="unassigned">Sem responsável</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -275,6 +291,7 @@ const Contacts: React.FC = () => {
                   <th className="px-4 py-4">CPF</th>
                   <th className="px-4 py-4">Nº Processo</th>
                   <th className="px-4 py-4">Status</th>
+                  <th className="px-4 py-4">Responsável</th>
                   <th className="px-4 py-4">Última Interação</th>
                   <th className="px-4 py-4 text-right">Ações</th>
                 </tr>
