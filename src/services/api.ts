@@ -329,12 +329,7 @@ export const api = {
       .from('contacts')
       .select(`
         *,
-        deals(
-          id,
-          owner_id,
-          created_at,
-          owner:team_members(id, name, avatar, user_id)
-        )
+        deals(id, owner_id, created_at)
       `)
       .order('last_activity', { ascending: false })
       .limit(100);
@@ -348,12 +343,32 @@ export const api = {
       return []; // Return empty array if no data
     }
 
-    return data.map((c: any) => {
-      // Pick the most recent deal that has an owner
+    // Collect all unique owner_ids from the most recent deals to resolve names in one query
+    const ownerIdsByContact = new Map<string, string>();
+    data.forEach((c: any) => {
       const dealsWithOwner = (c.deals || [])
-        .filter((d: any) => d.owner_id && d.owner)
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .filter((d: any) => !!d.owner_id)
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
       const topDeal = dealsWithOwner[0];
+      if (topDeal?.owner_id) ownerIdsByContact.set(c.id, topDeal.owner_id);
+    });
+
+    const allOwnerIds = Array.from(new Set(ownerIdsByContact.values()));
+    let membersMap: Map<string, { id: string; name: string; avatar: string | null; user_id: string | null }> = new Map();
+    if (allOwnerIds.length > 0) {
+      const { data: members } = await supabase
+        .from('team_members')
+        .select('id, name, avatar, user_id')
+        .in('id', allOwnerIds);
+      (members || []).forEach((m: any) => membersMap.set(m.id, m));
+    }
+
+    return data.map((c: any) => {
+      const ownerId = ownerIdsByContact.get(c.id) || null;
+      const owner = ownerId ? membersMap.get(ownerId) : null;
 
       return {
         id: c.id,
@@ -364,10 +379,10 @@ export const api = {
         lastContact: new Date(c.last_activity).toLocaleDateString('pt-BR'),
         cpf: c.cpf || null,
         numeroProcesso: c.numero_processo || null,
-        ownerId: topDeal?.owner?.id || null,
-        ownerName: topDeal?.owner?.name || null,
-        ownerAvatar: topDeal?.owner?.avatar || null,
-        ownerUserId: topDeal?.owner?.user_id || null,
+        ownerId: owner?.id || null,
+        ownerName: owner?.name || null,
+        ownerAvatar: owner?.avatar || null,
+        ownerUserId: owner?.user_id || null,
       };
     });
   },
