@@ -1277,13 +1277,12 @@ export const api = {
   fetchConversations: async (): Promise<UIConversation[]> => {
     console.log('[API] Fetching conversations from Supabase...');
     
-    // Fetch active conversations with contact data and assigned user
+    // Fetch active conversations with contact data
     const { data: conversations, error: convError } = await supabase
       .from('conversations')
       .select(`
         *,
-        contact:contacts(*),
-        assigned_user:team_members!assigned_user_id(id, name, avatar)
+        contact:contacts(*)
       `)
       .eq('is_active', true)
       .order('last_message_at', { ascending: false })
@@ -1300,6 +1299,33 @@ export const api = {
     }
 
     console.log(`[API] Found ${conversations.length} conversations`);
+
+    // Fetch team members to resolve assigned_user_id -> name/avatar (no FK constraint, manual join)
+    const assignedIds = Array.from(
+      new Set(
+        conversations
+          .map((c: any) => c.assigned_user_id)
+          .filter((id: string | null) => !!id)
+      )
+    ) as string[];
+
+    let membersMap: Map<string, { id: string; name: string; avatar: string | null }> = new Map();
+    if (assignedIds.length > 0) {
+      const { data: members } = await supabase
+        .from('team_members')
+        .select('id, name, avatar')
+        .in('id', assignedIds);
+      (members || []).forEach((m: any) => membersMap.set(m.id, m));
+    }
+
+    // Attach assigned_user to each conversation row before transformation
+    conversations.forEach((conv: any) => {
+      if (conv.assigned_user_id && membersMap.has(conv.assigned_user_id)) {
+        conv.assigned_user = membersMap.get(conv.assigned_user_id);
+      } else {
+        conv.assigned_user = null;
+      }
+    });
 
     // Fetch messages for each conversation
     const conversationsWithMessages: UIConversation[] = await Promise.all(
