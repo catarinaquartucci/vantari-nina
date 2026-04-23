@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, UserPlus } from 'lucide-react';
+import { Shield, Bot, Plug, Loader2, Save, RotateCcw, BookOpen, Lock, UserPlus, Palette } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import AgentSettings, { AgentSettingsRef } from './settings/AgentSettings';
 import ApiSettings, { ApiSettingsRef } from './settings/ApiSettings';
+import AppearanceSettings from './settings/AppearanceSettings';
 import SystemRoadmap from './SystemRoadmap';
 import InviteSettings from './settings/InviteSettings';
 import { useCompanySettings } from '@/hooks/useCompanySettings';
