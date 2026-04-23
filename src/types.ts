@@ -88,6 +88,10 @@ export interface Contact {
   lastContact: string;
   cpf?: string | null;
   numeroProcesso?: string | null;
+  ownerId?: string | null;
+  ownerName?: string | null;
+  ownerAvatar?: string | null;
+  ownerUserId?: string | null;
 }
 
 export interface StatMetric {
@@ -289,6 +293,7 @@ export interface UIConversation {
   assignedTeam: string | null;
   assignedUserId: string | null;
   assignedUserName: string | null;
+  assignedUserAvatar: string | null;
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
@@ -335,7 +340,8 @@ export function transformDBToUIConversation(
     isActive: conv.is_active,
     assignedTeam: conv.assigned_team,
     assignedUserId: conv.assigned_user_id,
-    assignedUserName: null, // Will be populated if needed
+    assignedUserName: (conv as any).assigned_user?.name || null,
+    assignedUserAvatar: (conv as any).assigned_user?.avatar || null,
     lastMessage: lastMsg?.content || '',
     lastMessageTime: formatRelativeTime(conv.last_message_at),
     unreadCount,
