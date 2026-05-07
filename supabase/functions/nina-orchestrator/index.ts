@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
 // Tool definition for appointment creation
@@ -102,7 +102,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -239,7 +239,7 @@ serve(async (req) => {
           has_elevenlabs: !!effectiveSettings.elevenlabs_api_key,
         });
         
-        await processQueueItem(supabase, lovableApiKey, item, systemPrompt, effectiveSettings);
+        await processQueueItem(supabase, geminiApiKey, item, systemPrompt, effectiveSettings);
         
         // Mark as completed
         await supabase
@@ -632,7 +632,7 @@ async function cancelAppointmentFromAI(
 
 async function processQueueItem(
   supabase: any,
-  lovableApiKey: string,
+  geminiApiKey: string,
   item: any,
   systemPrompt: string,
   settings: any
@@ -743,10 +743,10 @@ async function processQueueItem(
   }
 
   // Call Lovable AI Gateway
-  const aiResponse = await fetch(LOVABLE_AI_URL, {
+  const aiResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${lovableApiKey}`,
+      'Authorization': `Bearer ${geminiApiKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(requestBody)
@@ -1187,7 +1187,9 @@ Trigger para oferecer agendamento:
 - Lead atende critérios de qualificação
 - Momento natural da conversa (não force)
 </tool_usage_protocol>
-
+async function processQueueItem(
+  supabase: any,
+  geminiApiKey: string,
 <cognitive_process>
 Para CADA mensagem do lead, siga este processo mental silencioso:
 1. ANALISAR: Em qual etapa o lead está? (Início, Descoberta, Educação, Fechamento)
@@ -1306,15 +1308,15 @@ function getModelSettings(
   
   switch (modelMode) {
     case 'flash':
-      return { model: 'google/gemini-2.5-flash', temperature: 0.7 };
+      return { model: 'gemini-2.5-flash', temperature: 0.7 };
     case 'pro':
-      return { model: 'google/gemini-2.5-pro', temperature: 0.7 };
+      return { model: 'gemini-2.5-pro', temperature: 0.7 };
     case 'pro3':
-      return { model: 'google/gemini-3-pro-preview', temperature: 0.7 };
+      return { model: 'gemini-3-pro-preview', temperature: 0.7 };
     case 'adaptive':
       return getAdaptiveSettings(conversationHistory, message, contact, clientMemory);
     default:
-      return { model: 'google/gemini-2.5-flash', temperature: 0.7 };
+      return { model: 'gemini-2.5-flash', temperature: 0.7 };
   }
 }
 
@@ -1325,7 +1327,7 @@ function getAdaptiveSettings(
   clientMemory: any
 ): { model: string; temperature: number } {
   const defaultSettings = {
-    model: 'google/gemini-2.5-flash',
+    model: 'gemini-2.5-flash',
     temperature: 0.7
   };
 
@@ -1347,35 +1349,35 @@ function getAdaptiveSettings(
 
   if (isComplaint || isUrgent) {
     return {
-      model: 'google/gemini-2.5-pro',
+      model: 'gemini-2.5-pro',
       temperature: 0.3
     };
   }
 
   if (isSales && qualificationScore > 50) {
     return {
-      model: 'google/gemini-2.5-flash',
+      model: 'gemini-2.5-flash',
       temperature: 0.5
     };
   }
 
   if (isTechnical) {
     return {
-      model: 'google/gemini-2.5-pro',
+      model: 'gemini-2.5-pro',
       temperature: 0.4
     };
   }
 
   if (messageCount < 5) {
     return {
-      model: 'google/gemini-2.5-flash',
+      model: 'gemini-2.5-flash',
       temperature: 0.8
     };
   }
 
   if (messageCount > 15) {
     return {
-      model: 'google/gemini-2.5-flash',
+      model: 'gemini-2.5-flash',
       temperature: 0.5
     };
   }
