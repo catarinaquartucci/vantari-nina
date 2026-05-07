@@ -26,3 +26,7 @@ dist-ssr
 
 .venv/
 *.bak
+
+
+supabase/.temp/
+
