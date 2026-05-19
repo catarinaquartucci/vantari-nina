@@ -168,12 +168,12 @@ serve(async (req) => {
       }
     }
 
-    // 2. Lovable AI Key
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    if (lovableApiKey && lovableApiKey.length > 10) {
-      results.push({ component: 'lovable_ai', status: 'ok', message: 'Lovable AI configurada' });
+    // 2. Gemini AI Key
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (geminiApiKey && geminiApiKey.length > 10) {
+      results.push({ component: 'gemini_ai', status: 'ok', message: 'Gemini AI configurada' });
     } else {
-      results.push({ component: 'lovable_ai', status: 'error', message: 'LOVABLE_API_KEY não configurada', details: 'A IA não funcionará sem esta chave' });
+      results.push({ component: 'gemini_ai', status: 'error', message: 'GEMINI_API_KEY não configurada', details: 'A IA não funcionará sem esta chave' });
     }
 
     // 3. Pipeline

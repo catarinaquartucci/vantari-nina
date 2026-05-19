@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { evolutionApiUrl, evolutionApiKey, evolutionInstance } = await getEvolutionConfig(supabase);
@@ -64,11 +64,11 @@ Deno.serve(async (req) => {
     const results: HealthCheckResult[] = [];
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. LOVABLE_API_KEY
-    if (lovableApiKey && lovableApiKey.length > 10) {
-      results.push({ component: 'lovable_api_key', status: 'ok', message: 'LOVABLE_API_KEY está configurada' });
+    // 1. GEMINI_API_KEY
+    if (geminiApiKey && geminiApiKey.length > 10) {
+      results.push({ component: 'gemini_api_key', status: 'ok', message: 'GEMINI_API_KEY está configurada' });
     } else {
-      results.push({ component: 'lovable_api_key', status: 'error', message: 'LOVABLE_API_KEY não está configurada. A IA não funcionará.' });
+      results.push({ component: 'gemini_api_key', status: 'error', message: 'GEMINI_API_KEY não está configurada. A IA não funcionará.' });
     }
 
     // 2. WhatsApp — check incoming AND outgoing
