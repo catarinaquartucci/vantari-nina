@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
 interface ExtractionResult {
   contactId: string;
@@ -20,7 +20,7 @@ interface ExtractionResult {
 
 async function extractFromContact(
   supabase: any,
-  lovableApiKey: string,
+  geminiApiKey: string,
   contact: any
 ): Promise<ExtractionResult> {
   const result: ExtractionResult = {
@@ -69,11 +69,11 @@ async function extractFromContact(
       return result;
     }
 
-    // Call Lovable AI with tool calling for structured extraction
-    const aiResponse = await fetch(LOVABLE_AI_URL, {
+    // Call Gemini AI with tool calling for structured extraction
+    const aiResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${geminiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -169,7 +169,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -208,7 +208,7 @@ serve(async (req) => {
       console.log(`[Backfill] Processing batch ${i / BATCH_SIZE + 1} (${batch.length} contacts)`);
 
       const batchResults = await Promise.all(
-        batch.map((c) => extractFromContact(supabase, lovableApiKey, c))
+        batch.map((c) => extractFromContact(supabase, geminiApiKey, c))
       );
       results.push(...batchResults);
 
