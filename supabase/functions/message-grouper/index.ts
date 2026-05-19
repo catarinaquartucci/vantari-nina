@@ -279,7 +279,7 @@ async function downloadEvolutionMedia(
   }
 }
 
-// Transcribe audio using Lovable AI Gateway (Whisper)
+// Transcribe audio using Gemini OpenAI-compatible (Whisper)
 async function transcribeAudio(audioBuffer: ArrayBuffer, geminiApiKey: string): Promise<string | null> {
   try {
     console.log('[MessageGrouper] Transcribing audio, size:', audioBuffer.byteLength, 'bytes');

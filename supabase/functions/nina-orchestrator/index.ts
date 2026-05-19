@@ -709,7 +709,7 @@ async function processQueueItem(
   // Process template variables ({{ data_hora }}, {{ dia_semana }}, etc.)
   const processedPrompt = processPromptTemplate(enhancedSystemPrompt, conversation.contact);
 
-  console.log('[Nina] Calling Lovable AI...');
+  console.log('[Nina] Calling Gemini AI...');
 
   // Get AI model settings based on user configuration
   const aiSettings = getModelSettings(settings, conversationHistory, message, conversation.contact, clientMemory);
@@ -742,7 +742,7 @@ async function processQueueItem(
     requestBody.tool_choice = "auto";
   }
 
-  // Call Lovable AI Gateway
+  // Call Gemini OpenAI-compatible API
   const aiResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
     method: 'POST',
     headers: {
