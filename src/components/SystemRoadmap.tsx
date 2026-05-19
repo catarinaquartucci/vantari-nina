@@ -638,7 +638,7 @@ const SystemRoadmap: React.FC = () => {
                   <li>• PostgreSQL (banco de dados)</li>
                   <li>• Row Level Security (RLS)</li>
                   <li>• Realtime subscriptions (WebSocket)</li>
-                  <li>• Lovable AI Gateway (Gemini/GPT)</li>
+                  <li>• Gemini AI (OpenAI-compatible)</li>
                   <li>• WhatsApp Cloud API</li>
                   <li>• ElevenLabs TTS API</li>
                 </ul>
@@ -657,7 +657,7 @@ PostgreSQL (contacts, conversations, messages)
       ↓
 [nina-orchestrator] Edge Function
       ↓
-Lovable AI Gateway (Gemini/GPT)
+Gemini AI (OpenAI-compatible)
       ↓
 [whatsapp-sender] Edge Function
       ↓
@@ -1399,7 +1399,7 @@ const response = await fetch(
 │  • Busca context: contato + conversa + histórico           │
 │  • Verifica se deve responder (auto_response_enabled)       │
 │  • Processa templates dinâmicos ({{ data_hora }}, etc)     │
-│  • Envia prompt ao Lovable AI Gateway                       │
+│  • Envia prompt ao Gemini AI                       │
 │  • Recebe resposta da IA                                    │
 └────────────────────┬────────────────────────────────────────┘
                      ↓
@@ -1444,7 +1444,7 @@ const response = await fetch(
 │ [analyze-conversation] Edge Function                        │
 │  • Busca todas as mensagens da conversa                     │
 │  • Monta prompt de análise com histórico completo          │
-│  • Envia ao Lovable AI Gateway (Gemini 2.5 Flash)          │
+│  • Envia ao Gemini AI (Gemini 2.5 Flash)          │
 └────────────────────┬────────────────────────────────────────┘
                      ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -2237,9 +2237,9 @@ const transformConversation = (dbConv: DBConversation): UIConversation => {
                     </div>
 
                     <div>
-                      <p className="text-xs font-bold text-blue-400 mb-2">IA (Lovable AI Gateway)</p>
+                      <p className="text-xs font-bold text-blue-400 mb-2">IA (Gemini AI)</p>
                       <ul className="text-sm text-slate-300 space-y-1 pl-4">
-                        <li className="text-xs">✅ O sistema usa <strong>Lovable AI Gateway</strong> (Gemini/GPT)</li>
+                        <li className="text-xs">✅ O sistema usa <strong>Gemini AI</strong> (Gemini/GPT)</li>
                         <li className="text-xs">Não requer API key própria da OpenAI</li>
                       </ul>
                     </div>
