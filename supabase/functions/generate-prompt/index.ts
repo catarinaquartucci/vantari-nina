@@ -65,9 +65,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY not configured');
     }
 
     // Template do prompt que será preenchido
@@ -190,12 +190,12 @@ INFORMAÇÕES DO USUÁRIO:
 
 Gere o prompt completo preenchido, mantendo TODA a estrutura XML e substituindo apenas os placeholders:`;
 
-    // Chamar Lovable AI Gateway com Gemini 3 Pro
-    console.log('[generate-prompt] Chamando Lovable AI Gateway...');
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Chamar Gemini OpenAI-compatible com Gemini 3 Pro
+    console.log('[generate-prompt] Chamando Gemini OpenAI-compatible...');
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${geminiApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -218,7 +218,7 @@ Gere o prompt completo preenchido, mantendo TODA a estrutura XML e substituindo 
       }
       if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: 'Créditos insuficientes. Adicione créditos ao seu workspace Lovable.' }),
+          JSON.stringify({ error: 'Créditos insuficientes. Verifique os créditos do provedor de IA.' }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
