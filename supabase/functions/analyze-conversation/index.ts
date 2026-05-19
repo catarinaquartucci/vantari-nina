@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,7 +15,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -44,10 +44,10 @@ serve(async (req) => {
       const needsProcesso = !existingContact?.numero_processo;
 
       if ((needsCpf || needsProcesso) && user_message && user_message.trim().length > 0) {
-        const extractResp = await fetch(LOVABLE_AI_URL, {
+        const extractResp = await fetch(GEMINI_OPENAI_COMPAT_URL, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${lovableApiKey}`,
+            'Authorization': `Bearer ${geminiApiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -273,10 +273,10 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
       : `Você é um analista de conversas de vendas. Analise a interação e extraia insights estruturados para atualizar a memória do cliente.`;
 
     // Call AI to extract insights AND determine deal stage (if applicable)
-    const analysisResponse = await fetch(LOVABLE_AI_URL, {
+    const analysisResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lovableApiKey}`,
+        'Authorization': `Bearer ${geminiApiKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
