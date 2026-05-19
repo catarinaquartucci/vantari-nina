@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/audio/transcriptions";
+const GEMINI_TRANSCRIPTION_URL = "https://generativelanguage.googleapis.com/v1beta/openai/audio/transcriptions";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,7 +15,7 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   // Evolution API config: nina_settings first, fallback to env
@@ -103,7 +103,7 @@ serve(async (req) => {
         const combinedContent = await combineAndTranscribeMessages(
           supabase, messages, dbMessages,
           evolutionApiUrl, evolutionApiKey, messageInstance,
-          lovableApiKey
+          geminiApiKey
         );
 
         console.log(`[MessageGrouper] Combined content for ${phoneNumber}:`, combinedContent.substring(0, 200));
@@ -192,7 +192,7 @@ async function combineAndTranscribeMessages(
   evolutionApiUrl: string | undefined,
   evolutionApiKey: string | undefined,
   evolutionInstance: string | undefined,
-  lovableApiKey: string
+  geminiApiKey: string
 ): Promise<string> {
   const contentParts: string[] = [];
 
@@ -208,11 +208,11 @@ async function combineAndTranscribeMessages(
     // Handle audio transcription
     if (messageData.type === 'audio') {
       const evolutionKey = messageData._evolution_key;
-      if (evolutionKey && evolutionApiUrl && evolutionApiKey && evolutionInstance && lovableApiKey) {
+      if (evolutionKey && evolutionApiUrl && evolutionApiKey && evolutionInstance && geminiApiKey) {
         console.log('[MessageGrouper] Transcribing audio via Evolution API');
         const audioBuffer = await downloadEvolutionMedia(evolutionApiUrl, evolutionApiKey, evolutionInstance, evolutionKey);
         if (audioBuffer) {
-          const transcription = await transcribeAudio(audioBuffer, lovableApiKey);
+          const transcription = await transcribeAudio(audioBuffer, geminiApiKey);
           if (transcription) {
             content = transcription;
             await supabase.from('messages').update({ content: transcription }).eq('id', dbMsg.id);
@@ -280,7 +280,7 @@ async function downloadEvolutionMedia(
 }
 
 // Transcribe audio using Lovable AI Gateway (Whisper)
-async function transcribeAudio(audioBuffer: ArrayBuffer, lovableApiKey: string): Promise<string | null> {
+async function transcribeAudio(audioBuffer: ArrayBuffer, geminiApiKey: string): Promise<string | null> {
   try {
     console.log('[MessageGrouper] Transcribing audio, size:', audioBuffer.byteLength, 'bytes');
 
@@ -290,9 +290,9 @@ async function transcribeAudio(audioBuffer: ArrayBuffer, lovableApiKey: string):
     formData.append('model', 'whisper-1');
     formData.append('language', 'pt');
 
-    const response = await fetch(LOVABLE_AI_URL, {
+    const response = await fetch(GEMINI_TRANSCRIPTION_URL, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${lovableApiKey}` },
+      headers: { 'Authorization': `Bearer ${geminiApiKey}` },
       body: formData
     });
 
