@@ -63,7 +63,7 @@ const componentLabels: Record<string, string> = {
   whatsapp: 'WhatsApp',
   agent_prompt: 'Agente IA',
   business_hours: 'Horário Comercial',
-  lovable_ai: 'IA Backend',
+  gemini_ai: 'IA Backend',
   pipeline: 'Pipeline de Vendas',
   profile: 'Perfil',
   nina_settings: 'Configurações Nina',
