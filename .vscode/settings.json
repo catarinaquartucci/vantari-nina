@@ -1,0 +1,11 @@
+{
+  "deno.enablePaths": ["supabase/functions"],
+  "deno.unstable": true,
+  "typescript.validate.enable": true,
+  "editor.formatOnSave": true,
+  "files.exclude": {
+    "**/*.bak": true,
+    "**/*.save": true,
+    "supabase/.temp": true
+  }
+}
