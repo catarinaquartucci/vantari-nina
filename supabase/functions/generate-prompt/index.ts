@@ -199,7 +199,7 @@ Gere o prompt completo preenchido, mantendo TODA a estrutura XML e substituindo 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         messages: [
           { role: 'user', content: metaPrompt }
         ],

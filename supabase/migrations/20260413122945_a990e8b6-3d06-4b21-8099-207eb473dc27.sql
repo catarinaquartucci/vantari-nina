@@ -1,5 +1,8 @@
 -- Enable pg_cron and pg_net extensions
-CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+
+-- pg_cron already enabled by earlier migration/local Supabase image
+-- CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+
 CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 
 -- Create atomic upsert function for nina_processing_queue
