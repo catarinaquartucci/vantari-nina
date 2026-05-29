@@ -32,6 +32,146 @@ function cleanGeneratedPrompt(raw: string): string {
   return cleaned.trim();
 }
 
+function base64UrlEncode(input: string | ArrayBuffer): string {
+  const bytes = typeof input === 'string'
+    ? new TextEncoder().encode(input)
+    : new Uint8Array(input);
+
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function pemToArrayBuffer(pem: string): ArrayBuffer {
+  const normalizedPem = pem.replace(/\\n/g, '\n');
+  const base64 = normalizedPem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s/g, '');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes.buffer;
+}
+
+async function getVertexAccessToken(): Promise<string> {
+  const clientEmail = Deno.env.get('VERTEX_CLIENT_EMAIL');
+  const privateKey = Deno.env.get('VERTEX_PRIVATE_KEY');
+
+  if (!clientEmail || !privateKey) {
+    throw new Error('Vertex service account credentials not configured');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'RS256',
+    typ: 'JWT',
+  };
+  const payload = {
+    iss: clientEmail,
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+  const unsignedJwt = `${base64UrlEncode(JSON.stringify(header))}.${base64UrlEncode(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(privateKey),
+    {
+      name: 'RSASSA-PKCS1-v1_5',
+      hash: 'SHA-256',
+    },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    key,
+    new TextEncoder().encode(unsignedJwt)
+  );
+  const jwt = `${unsignedJwt}.${base64UrlEncode(signature)}`;
+
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    console.error('[generate-prompt] Vertex OAuth error:', tokenResponse.status, errorText);
+    throw new Error(`Vertex OAuth error: ${tokenResponse.status}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  if (!tokenData.access_token) {
+    throw new Error('Vertex OAuth access_token not returned');
+  }
+
+  return tokenData.access_token;
+}
+
+async function callVertexGenerateContent(prompt: string): Promise<string> {
+  const projectId = Deno.env.get('VERTEX_PROJECT_ID');
+  const location = Deno.env.get('VERTEX_LOCATION');
+  const model = Deno.env.get('VERTEX_MODEL');
+
+  if (!projectId || !location || !model) {
+    throw new Error('Vertex configuration not configured');
+  }
+
+  const accessToken = await getVertexAccessToken();
+  const response = await fetch(
+    `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[generate-prompt] Vertex generateContent error:', response.status, errorText);
+    throw new Error(`Vertex generateContent error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const generatedText = data.candidates?.[0]?.content?.parts
+    ?.map((part: { text?: string }) => part.text ?? '')
+    .join('');
+
+  if (!generatedText) {
+    throw new Error('No prompt generated');
+  }
+
+  return generatedText;
+}
+
 interface FormData {
   sdr_name: string;
   role: string;
@@ -63,11 +203,6 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: 'Campos obrigatórios faltando' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    }
-
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
     }
 
     // Template do prompt que será preenchido
@@ -190,48 +325,9 @@ INFORMAÇÕES DO USUÁRIO:
 
 Gere o prompt completo preenchido, mantendo TODA a estrutura XML e substituindo apenas os placeholders:`;
 
-    // Chamar Gemini OpenAI-compatible com Gemini 3 Pro
-    console.log('[generate-prompt] Chamando Gemini OpenAI-compatible...');
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${geminiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gemini-2.5-pro',
-        messages: [
-          { role: 'user', content: metaPrompt }
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[generate-prompt] AI Gateway error:', response.status, errorText);
-      
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Limite de taxa excedido. Tente novamente em alguns instantes.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Créditos insuficientes. Verifique os créditos do provedor de IA.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      throw new Error(`AI Gateway error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const generatedPrompt = data.choices?.[0]?.message?.content;
-
-    if (!generatedPrompt) {
-      throw new Error('No prompt generated');
-    }
+    // Chamar Vertex AI Gemini Enterprise
+    console.log('[generate-prompt] Chamando Vertex AI Gemini Enterprise...');
+    const generatedPrompt = await callVertexGenerateContent(metaPrompt);
 
     // Limpar resposta do Gemini
     const cleanedPrompt = cleanGeneratedPrompt(generatedPrompt);

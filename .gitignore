@@ -7,9 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependências e build
 node_modules
 dist
 dist-ssr
+
+# Arquivos locais
 *.local
 
 # Editor directories and files
@@ -24,10 +27,29 @@ dist-ssr
 *.sln
 *.sw?
 
-
+# Python
 .venv/
+
+# Backups e temporários
 *.bak
+*.save
 
-
+# Supabase
 supabase/.temp/
+supabase/.branches/
 
+# Variáveis de ambiente
+.env
+.env.*
+.env.local
+
+# Chaves e credenciais
+vertex-key.txt
+*.service-account.json
+vertex-service-account.json
+*.pem
+*.key
+*.p12
+
+# Sistema
+Thumbs.db
