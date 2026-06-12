@@ -1,12 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callVertexAIWithTools,
+  extractFunctionCalls,
+  openAiMessagesToVertex,
+  openAiToolsToVertex,
+} from "../_shared/vertex-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,7 +19,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -25,10 +28,10 @@ serve(async (req) => {
 
     // Calculate interaction count
     const interactionCount = (current_memory.interaction_summary?.total_conversations || 0) + 1;
-    
+
     // Determine if full AI analysis should run (message 1, 5, 10, 15, 20...)
     const shouldAnalyze = interactionCount === 1 || interactionCount % 5 === 0;
-    
+
     console.log(`[Analyze] Interaction #${interactionCount}, full analysis: ${shouldAnalyze}`);
 
     // ALWAYS run lightweight CPF/processo extraction on every message (cheap and critical)
@@ -44,50 +47,39 @@ serve(async (req) => {
       const needsProcesso = !existingContact?.numero_processo;
 
       if ((needsCpf || needsProcesso) && user_message && user_message.trim().length > 0) {
-        const extractResp = await fetch(GEMINI_OPENAI_COMPAT_URL, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${geminiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.5-flash-lite',
-            messages: [
-              { role: 'system', content: 'Você extrai dados estruturados de mensagens. Retorne null para campos não mencionados claramente.' },
-              { role: 'user', content: `Extraia da mensagem abaixo o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX), se mencionados.\n\nMENSAGEM:\n${user_message.substring(0, 2000)}` }
-            ],
-            tools: [{
-              type: 'function',
-              function: {
-                name: 'extract_contact_data',
-                description: 'Extrair CPF e número de processo trabalhista',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    cpf: { type: ['string', 'null'], description: 'CPF do cliente. null se não mencionado.' },
-                    numero_processo: { type: ['string', 'null'], description: 'Número do processo trabalhista. null se não mencionado.' }
-                  },
-                  required: ['cpf', 'numero_processo'],
-                  additionalProperties: false
-                }
-              }
-            }],
-            tool_choice: { type: 'function', function: { name: 'extract_contact_data' } }
-          })
-        });
-
-        if (extractResp.ok) {
-          const extractData = await extractResp.json();
-          const tc = extractData.choices?.[0]?.message?.tool_calls?.[0];
-          if (tc) {
-            const extracted = JSON.parse(tc.function.arguments);
-            const updates: Record<string, string> = {};
-            if (extracted.cpf && needsCpf) updates.cpf = String(extracted.cpf).trim();
-            if (extracted.numero_processo && needsProcesso) updates.numero_processo = String(extracted.numero_processo).trim();
-            if (Object.keys(updates).length > 0) {
-              await supabase.from('contacts').update(updates).eq('id', contact_id);
-              console.log('[Analyze] Lightweight CPF/processo extraction updated:', updates);
+        const extractMessages = [
+          { role: 'system', content: 'Você extrai dados estruturados de mensagens. Retorne null para campos não mencionados claramente.' },
+          { role: 'user', content: `Extraia da mensagem abaixo o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX), se mencionados.\n\nMENSAGEM:\n${user_message.substring(0, 2000)}` }
+        ];
+        const extractTools = openAiToolsToVertex([{
+          type: 'function',
+          function: {
+            name: 'extract_contact_data',
+            description: 'Extrair CPF e número de processo trabalhista',
+            parameters: {
+              type: 'object',
+              properties: {
+                cpf: { type: ['string', 'null'], description: 'CPF do cliente. null se não mencionado.' },
+                numero_processo: { type: ['string', 'null'], description: 'Número do processo trabalhista. null se não mencionado.' }
+              },
+              required: ['cpf', 'numero_processo'],
+              additionalProperties: false
             }
+          }
+        }]);
+        const { contents: extractContents, systemInstruction: extractSystem } = openAiMessagesToVertex(extractMessages);
+
+        const extractResp = await callVertexAIWithTools(extractContents, extractTools, extractSystem);
+        const extractCalls = extractFunctionCalls(extractResp);
+        const tc = extractCalls.find(c => c.name === 'extract_contact_data');
+        if (tc) {
+          const extracted = tc.args as { cpf?: string | null; numero_processo?: string | null };
+          const updates: Record<string, string> = {};
+          if (extracted.cpf && needsCpf) updates.cpf = String(extracted.cpf).trim();
+          if (extracted.numero_processo && needsProcesso) updates.numero_processo = String(extracted.numero_processo).trim();
+          if (Object.keys(updates).length > 0) {
+            await supabase.from('contacts').update(updates).eq('id', contact_id);
+            console.log('[Analyze] Lightweight CPF/processo extraction updated:', updates);
           }
         }
       }
@@ -114,12 +106,12 @@ serve(async (req) => {
           }
         ]
       };
-      
+
       await supabase.rpc('update_client_memory', {
         p_contact_id: contact_id,
         p_new_memory: basicMemory
       });
-      
+
       console.log('[Analyze] Basic update completed');
       return new Response(JSON.stringify({ updated: true, type: 'basic' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -145,7 +137,7 @@ serve(async (req) => {
       .maybeSingle();
 
     const hasAiManagedStages = stages && stages.length > 0;
-    
+
     if (!hasAiManagedStages) {
       console.log('[Analyze] ⏭️ No AI-managed stages with criteria - skipping stage determination');
     }
@@ -177,7 +169,7 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
     `.trim();
 
     // Build tools array - always include memory insights, conditionally include stage determination
-    const tools: any[] = [
+    const openAiTools: any[] = [
       {
         type: "function",
         function: {
@@ -235,7 +227,7 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
 
     // Only add stage determination tool if there are AI-managed stages
     if (hasAiManagedStages) {
-      tools.push({
+      openAiTools.push({
         type: "function",
         function: {
           name: "determine_deal_stage",
@@ -266,51 +258,39 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
       });
     }
 
-    const systemPrompt = hasAiManagedStages 
+    const systemPrompt = hasAiManagedStages
       ? `Você é um analista de conversas de vendas. Analise a interação e:
 1. Extraia insights estruturados para atualizar a memória do cliente
 2. Determine para qual estágio do pipeline o deal deve ir com base nos critérios fornecidos`
       : `Você é um analista de conversas de vendas. Analise a interação e extraia insights estruturados para atualizar a memória do cliente.`;
 
-    // Call AI to extract insights AND determine deal stage (if applicable)
-    const analysisResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${geminiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: conversationSnippet }
-        ],
-        tools: tools
-      })
-    });
+    // Build Vertex AI request
+    const analysisMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: conversationSnippet }
+    ];
+    const { contents: analysisContents, systemInstruction: analysisSystem } = openAiMessagesToVertex(analysisMessages);
+    const vertexTools = openAiToolsToVertex(openAiTools);
 
-    if (!analysisResponse.ok) {
-      console.error('[Analyze] AI analysis failed:', analysisResponse.status);
-      throw new Error('AI analysis failed');
-    }
+    // Call Vertex AI to extract insights AND determine deal stage (if applicable)
+    const analysisResponse = await callVertexAIWithTools(analysisContents, vertexTools, analysisSystem);
 
-    const analysisData = await analysisResponse.json();
-    const toolCalls = analysisData.choices?.[0]?.message?.tool_calls || [];
-    
+    const toolCalls = extractFunctionCalls(analysisResponse);
+
     if (toolCalls.length === 0) {
       console.error('[Analyze] No tool calls in AI response');
       throw new Error('No insights extracted');
     }
 
     // Extract insights from tool calls
-    let insights = null;
-    let stageResult = null;
+    let insights: any = null;
+    let stageResult: any = null;
 
     for (const toolCall of toolCalls) {
-      if (toolCall.function?.name === 'update_memory_insights') {
-        insights = JSON.parse(toolCall.function.arguments);
-      } else if (toolCall.function?.name === 'determine_deal_stage') {
-        stageResult = JSON.parse(toolCall.function.arguments);
+      if (toolCall.name === 'update_memory_insights') {
+        insights = toolCall.args;
+      } else if (toolCall.name === 'determine_deal_stage') {
+        stageResult = toolCall.args;
       }
     }
 
@@ -329,7 +309,7 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
             ...insights.interests
           ])).slice(0, 10),
           qualification_score: insights.qualification_score,
-          lead_stage: insights.qualification_score > 70 ? 'qualified' : 
+          lead_stage: insights.qualification_score > 70 ? 'qualified' :
                       insights.qualification_score > 40 ? 'engaged' : 'new',
           budget_indication: insights.budget_indication,
           decision_timeline: insights.decision_timeline
@@ -399,11 +379,11 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
     let dealMoved = false;
     if (stageResult && currentDeal && stageResult.suggested_stage_id !== currentDeal.stage_id && stageResult.confidence > 70) {
       const newStage = stages?.find(s => s.id === stageResult.suggested_stage_id);
-      
+
       if (newStage) {
         const { error: updateError } = await supabase
           .from('deals')
-          .update({ 
+          .update({
             stage_id: stageResult.suggested_stage_id,
             stage: newStage.title
           })
@@ -421,8 +401,8 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
       console.log(`[Analyze] Deal NOT moved: same stage or low confidence (${stageResult.confidence}%)`);
     }
 
-    return new Response(JSON.stringify({ 
-      updated: true, 
+    return new Response(JSON.stringify({
+      updated: true,
       type: 'full',
       insights,
       stage_result: stageResult,

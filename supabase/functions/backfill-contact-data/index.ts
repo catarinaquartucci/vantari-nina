@@ -1,12 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callVertexAIWithTools,
+  extractFunctionCalls,
+  openAiMessagesToVertex,
+  openAiToolsToVertex,
+} from "../_shared/vertex-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 
 interface ExtractionResult {
   contactId: string;
@@ -20,7 +24,6 @@ interface ExtractionResult {
 
 async function extractFromContact(
   supabase: any,
-  geminiApiKey: string,
   contact: any
 ): Promise<ExtractionResult> {
   const result: ExtractionResult = {
@@ -69,67 +72,53 @@ async function extractFromContact(
       return result;
     }
 
-    // Call Gemini AI with tool calling for structured extraction
-    const aiResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${geminiApiKey}`,
-        'Content-Type': 'application/json',
+    // Build Vertex AI request
+    const aiMessages = [
+      {
+        role: 'system',
+        content: 'Você é um extrator de dados. Analise as mensagens do cliente e extraia APENAS o CPF e o número do processo trabalhista, se mencionados. Retorne null para campos não encontrados.',
       },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: 'Você é um extrator de dados. Analise as mensagens do cliente e extraia APENAS o CPF e o número do processo trabalhista, se mencionados. Retorne null para campos não encontrados.',
-          },
-          {
-            role: 'user',
-            content: `Analise as mensagens abaixo de um cliente e extraia o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX) se mencionados.\n\nMENSAGENS:\n${conversationText.substring(0, 8000)}`,
-          },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'extract_contact_data',
-              description: 'Extrair CPF e número de processo trabalhista das mensagens',
-              parameters: {
-                type: 'object',
-                properties: {
-                  cpf: {
-                    type: ['string', 'null'],
-                    description: 'CPF do cliente (apenas dígitos ou formatado). Retorne null se não mencionado claramente.',
-                  },
-                  numero_processo: {
-                    type: ['string', 'null'],
-                    description: 'Número do processo trabalhista. Retorne null se não mencionado claramente.',
-                  },
-                },
-                required: ['cpf', 'numero_processo'],
-                additionalProperties: false,
+      {
+        role: 'user',
+        content: `Analise as mensagens abaixo de um cliente e extraia o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX) se mencionados.\n\nMENSAGENS:\n${conversationText.substring(0, 8000)}`,
+      },
+    ];
+
+    const vertexTools = openAiToolsToVertex([
+      {
+        type: 'function',
+        function: {
+          name: 'extract_contact_data',
+          description: 'Extrair CPF e número de processo trabalhista das mensagens',
+          parameters: {
+            type: 'object',
+            properties: {
+              cpf: {
+                type: ['string', 'null'],
+                description: 'CPF do cliente (apenas dígitos ou formatado). Retorne null se não mencionado claramente.',
+              },
+              numero_processo: {
+                type: ['string', 'null'],
+                description: 'Número do processo trabalhista. Retorne null se não mencionado claramente.',
               },
             },
+            required: ['cpf', 'numero_processo'],
+            additionalProperties: false,
           },
-        ],
-        tool_choice: { type: 'function', function: { name: 'extract_contact_data' } },
-      }),
-    });
+        },
+      },
+    ]);
 
-    if (!aiResponse.ok) {
-      const txt = await aiResponse.text();
-      result.error = `AI ${aiResponse.status}: ${txt.substring(0, 200)}`;
-      return result;
-    }
-
-    const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    const { contents, systemInstruction } = openAiMessagesToVertex(aiMessages);
+    const aiResponse = await callVertexAIWithTools(contents, vertexTools, systemInstruction);
+    const toolCalls = extractFunctionCalls(aiResponse);
+    const toolCall = toolCalls.find(c => c.name === 'extract_contact_data');
 
     if (!toolCall) {
       return result;
     }
 
-    const extracted = JSON.parse(toolCall.function.arguments);
+    const extracted = toolCall.args as { cpf?: string | null; numero_processo?: string | null };
 
     // Only update fields that are empty in the contact and were found by AI
     const updates: Record<string, string> = {};
@@ -169,7 +158,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -208,7 +196,7 @@ serve(async (req) => {
       console.log(`[Backfill] Processing batch ${i / BATCH_SIZE + 1} (${batch.length} contacts)`);
 
       const batchResults = await Promise.all(
-        batch.map((c) => extractFromContact(supabase, geminiApiKey, c))
+        batch.map((c) => extractFromContact(supabase, c))
       );
       results.push(...batchResults);
 

@@ -168,12 +168,14 @@ serve(async (req) => {
       }
     }
 
-    // 2. Gemini AI Key
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
-    if (geminiApiKey && geminiApiKey.length > 10) {
-      results.push({ component: 'gemini_ai', status: 'ok', message: 'Gemini AI configurada' });
+    // 2. Vertex AI credentials
+    const vertexProjectId = Deno.env.get('VERTEX_PROJECT_ID');
+    const vertexClientEmail = Deno.env.get('VERTEX_CLIENT_EMAIL');
+    const vertexPrivateKey = Deno.env.get('VERTEX_PRIVATE_KEY');
+    if (vertexProjectId && vertexClientEmail && vertexPrivateKey && vertexPrivateKey.length > 10) {
+      results.push({ component: 'vertex_ai', status: 'ok', message: 'Vertex AI Enterprise configurada' });
     } else {
-      results.push({ component: 'gemini_ai', status: 'error', message: 'GEMINI_API_KEY não configurada', details: 'A IA não funcionará sem esta chave' });
+      results.push({ component: 'vertex_ai', status: 'error', message: 'Credenciais Vertex AI não configuradas', details: 'Configure VERTEX_PROJECT_ID, VERTEX_CLIENT_EMAIL e VERTEX_PRIVATE_KEY. A IA não funcionará sem estas credenciais.' });
     }
 
     // 3. Pipeline

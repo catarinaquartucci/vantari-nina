@@ -1,12 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callVertexAIWithTools,
+  extractFunctionCalls,
+  openAiMessagesToVertex,
+  openAiToolsToVertex,
+} from "../_shared/vertex-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const GEMINI_OPENAI_COMPAT_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
 // Tool definition for appointment creation
@@ -102,7 +107,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -239,7 +243,7 @@ serve(async (req) => {
           has_elevenlabs: !!effectiveSettings.elevenlabs_api_key,
         });
         
-        await processQueueItem(supabase, geminiApiKey, item, systemPrompt, effectiveSettings);
+        await processQueueItem(supabase, item, systemPrompt, effectiveSettings);
         
         // Mark as completed
         await supabase
@@ -632,7 +636,6 @@ async function cancelAppointmentFromAI(
 
 async function processQueueItem(
   supabase: any,
-  geminiApiKey: string,
   item: any,
   systemPrompt: string,
   settings: any
@@ -725,50 +728,33 @@ async function processQueueItem(
     console.log('[Nina] AI scheduling enabled, adding appointment tools (create, reschedule, cancel)');
   }
 
-  // Build request body
-  const requestBody: any = {
-    model: aiSettings.model,
-    messages: [
-      { role: 'system', content: processedPrompt },
-      ...conversationHistory
-    ],
-    temperature: aiSettings.temperature,
-    max_tokens: 1000
-  };
+  // Build Vertex AI request
+  const openAiMessages = [
+    { role: 'system', content: processedPrompt },
+    ...conversationHistory
+  ];
+  const { contents: vertexContents, systemInstruction: vertexSystem } = openAiMessagesToVertex(openAiMessages);
+  const vertexTools = openAiToolsToVertex(tools);
 
-  // Only add tools if we have any
-  if (tools.length > 0) {
-    requestBody.tools = tools;
-    requestBody.tool_choice = "auto";
-  }
+  // Call Vertex AI Enterprise
+  const aiData = await callVertexAIWithTools(
+    vertexContents,
+    vertexTools,
+    vertexSystem,
+    { temperature: aiSettings.temperature, maxOutputTokens: 1000 }
+  );
 
-  // Call Gemini OpenAI-compatible API
-  const aiResponse = await fetch(GEMINI_OPENAI_COMPAT_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${geminiApiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!aiResponse.ok) {
-    const errorText = await aiResponse.text();
-    console.error('[Nina] AI response error:', aiResponse.status, errorText);
-    
-    if (aiResponse.status === 429) {
-      throw new Error('Rate limit exceeded, will retry later');
-    }
-    if (aiResponse.status === 402) {
-      throw new Error('Payment required - please add credits');
-    }
-    throw new Error(`AI error: ${aiResponse.status}`);
-  }
-
-  const aiData = await aiResponse.json();
-  const aiMessage = aiData.choices?.[0]?.message;
-  let aiContent = aiMessage?.content || '';
-  const toolCalls = aiMessage?.tool_calls || [];
+  // Extract text content and function calls from Vertex AI response
+  const candidateParts = aiData.candidates?.[0]?.content?.parts ?? [];
+  let aiContent = candidateParts
+    .filter((p: any) => p.text)
+    .map((p: any) => p.text)
+    .join('') || '';
+  const rawToolCalls = extractFunctionCalls(aiData);
+  // Adapt to the shape expected by the rest of the function
+  const toolCalls = rawToolCalls.map(tc => ({
+    function: { name: tc.name, arguments: JSON.stringify(tc.args) }
+  }));
 
   console.log('[Nina] AI response received, content length:', aiContent?.length || 0, ', tool_calls:', toolCalls.length);
 
@@ -1306,17 +1292,19 @@ function getModelSettings(
 ): { model: string; temperature: number } {
   const modelMode = settings?.ai_model_mode || 'flash';
   
+  // Note: model selection is controlled via VERTEX_MODEL env var in Vertex AI Enterprise.
+  // These labels are kept for logging/metadata purposes only.
   switch (modelMode) {
     case 'flash':
-      return { model: 'gemini-2.5-flash', temperature: 0.7 };
+      return { model: 'vertex-gemini-flash', temperature: 0.7 };
     case 'pro':
-      return { model: 'gemini-2.5-pro', temperature: 0.7 };
+      return { model: 'vertex-gemini-pro', temperature: 0.7 };
     case 'pro3':
-      return { model: 'gemini-3-pro-preview', temperature: 0.7 };
+      return { model: 'vertex-gemini-pro', temperature: 0.7 };
     case 'adaptive':
       return getAdaptiveSettings(conversationHistory, message, contact, clientMemory);
     default:
-      return { model: 'gemini-2.5-flash', temperature: 0.7 };
+      return { model: 'vertex-gemini-flash', temperature: 0.7 };
   }
 }
 
@@ -1326,14 +1314,16 @@ function getAdaptiveSettings(
   contact: any,
   clientMemory: any
 ): { model: string; temperature: number } {
+  // Note: model selection is controlled via VERTEX_MODEL env var in Vertex AI Enterprise.
+  // Temperature is still applied to the Vertex AI request.
   const defaultSettings = {
-    model: 'gemini-2.5-flash',
+    model: 'vertex-gemini-flash',
     temperature: 0.7
   };
 
   const messageCount = conversationHistory.length;
   const userContent = message.content?.toLowerCase() || '';
-  
+
   const isComplaintKeywords = ['problema', 'erro', 'não funciona', 'reclamação', 'péssimo', 'horrível'];
   const isSalesKeywords = ['preço', 'valor', 'desconto', 'comprar', 'contratar', 'plano'];
   const isTechnicalKeywords = ['como funciona', 'integração', 'api', 'configurar', 'instalar'];
@@ -1343,41 +1333,40 @@ function getAdaptiveSettings(
   const isSales = isSalesKeywords.some(k => userContent.includes(k));
   const isTechnical = isTechnicalKeywords.some(k => userContent.includes(k));
   const isUrgent = isUrgentKeywords.some(k => userContent.includes(k));
-  
-  const leadStage = clientMemory?.lead_profile?.lead_stage;
+
   const qualificationScore = clientMemory?.lead_profile?.qualification_score || 0;
 
   if (isComplaint || isUrgent) {
     return {
-      model: 'gemini-2.5-pro',
+      model: 'vertex-gemini-pro',
       temperature: 0.3
     };
   }
 
   if (isSales && qualificationScore > 50) {
     return {
-      model: 'gemini-2.5-flash',
+      model: 'vertex-gemini-flash',
       temperature: 0.5
     };
   }
 
   if (isTechnical) {
     return {
-      model: 'gemini-2.5-pro',
+      model: 'vertex-gemini-pro',
       temperature: 0.4
     };
   }
 
   if (messageCount < 5) {
     return {
-      model: 'gemini-2.5-flash',
+      model: 'vertex-gemini-flash',
       temperature: 0.8
     };
   }
 
   if (messageCount > 15) {
     return {
-      model: 'gemini-2.5-flash',
+      model: 'vertex-gemini-flash',
       temperature: 0.5
     };
   }

@@ -48,7 +48,9 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    const vertexProjectId = Deno.env.get('VERTEX_PROJECT_ID');
+    const vertexClientEmail = Deno.env.get('VERTEX_CLIENT_EMAIL');
+    const vertexPrivateKey = Deno.env.get('VERTEX_PRIVATE_KEY');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { evolutionApiUrl, evolutionApiKey, evolutionInstance } = await getEvolutionConfig(supabase);
@@ -64,11 +66,11 @@ Deno.serve(async (req) => {
     const results: HealthCheckResult[] = [];
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // 1. GEMINI_API_KEY
-    if (geminiApiKey && geminiApiKey.length > 10) {
-      results.push({ component: 'gemini_api_key', status: 'ok', message: 'GEMINI_API_KEY está configurada' });
+    // 1. Vertex AI credentials
+    if (vertexProjectId && vertexClientEmail && vertexPrivateKey && vertexPrivateKey.length > 10) {
+      results.push({ component: 'vertex_ai', status: 'ok', message: 'Credenciais Vertex AI Enterprise configuradas' });
     } else {
-      results.push({ component: 'gemini_api_key', status: 'error', message: 'GEMINI_API_KEY não está configurada. A IA não funcionará.' });
+      results.push({ component: 'vertex_ai', status: 'error', message: 'Credenciais Vertex AI não configuradas (VERTEX_PROJECT_ID / VERTEX_CLIENT_EMAIL / VERTEX_PRIVATE_KEY). A IA não funcionará.' });
     }
 
     // 2. WhatsApp — check incoming AND outgoing

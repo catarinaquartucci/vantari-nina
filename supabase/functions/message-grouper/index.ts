@@ -1,12 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { transcribeAudioVertex } from "../_shared/vertex-ai.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const GEMINI_TRANSCRIPTION_URL = "https://generativelanguage.googleapis.com/v1beta/openai/audio/transcriptions";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -15,7 +14,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const geminiApiKey = Deno.env.get('GEMINI_API_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   // Evolution API config: nina_settings first, fallback to env
@@ -102,8 +100,7 @@ serve(async (req) => {
         // Combine content and handle audio transcription
         const combinedContent = await combineAndTranscribeMessages(
           supabase, messages, dbMessages,
-          evolutionApiUrl, evolutionApiKey, messageInstance,
-          geminiApiKey
+          evolutionApiUrl, evolutionApiKey, messageInstance
         );
 
         console.log(`[MessageGrouper] Combined content for ${phoneNumber}:`, combinedContent.substring(0, 200));
@@ -191,8 +188,7 @@ async function combineAndTranscribeMessages(
   dbMessages: any[],
   evolutionApiUrl: string | undefined,
   evolutionApiKey: string | undefined,
-  evolutionInstance: string | undefined,
-  geminiApiKey: string
+  evolutionInstance: string | undefined
 ): Promise<string> {
   const contentParts: string[] = [];
 
@@ -208,11 +204,11 @@ async function combineAndTranscribeMessages(
     // Handle audio transcription
     if (messageData.type === 'audio') {
       const evolutionKey = messageData._evolution_key;
-      if (evolutionKey && evolutionApiUrl && evolutionApiKey && evolutionInstance && geminiApiKey) {
-        console.log('[MessageGrouper] Transcribing audio via Evolution API');
+      if (evolutionKey && evolutionApiUrl && evolutionApiKey && evolutionInstance) {
+        console.log('[MessageGrouper] Transcribing audio via Vertex AI');
         const audioBuffer = await downloadEvolutionMedia(evolutionApiUrl, evolutionApiKey, evolutionInstance, evolutionKey);
         if (audioBuffer) {
-          const transcription = await transcribeAudio(audioBuffer, geminiApiKey);
+          const transcription = await transcribeAudioVertex(audioBuffer, 'audio/ogg');
           if (transcription) {
             content = transcription;
             await supabase.from('messages').update({ content: transcription }).eq('id', dbMsg.id);
@@ -275,37 +271,6 @@ async function downloadEvolutionMedia(
     return bytes.buffer;
   } catch (error) {
     console.error('[MessageGrouper] Error downloading media:', error);
-    return null;
-  }
-}
-
-// Transcribe audio using Gemini OpenAI-compatible (Whisper)
-async function transcribeAudio(audioBuffer: ArrayBuffer, geminiApiKey: string): Promise<string | null> {
-  try {
-    console.log('[MessageGrouper] Transcribing audio, size:', audioBuffer.byteLength, 'bytes');
-
-    const formData = new FormData();
-    const audioBlob = new Blob([audioBuffer], { type: 'audio/ogg' });
-    formData.append('file', audioBlob, 'audio.ogg');
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'pt');
-
-    const response = await fetch(GEMINI_TRANSCRIPTION_URL, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${geminiApiKey}` },
-      body: formData
-    });
-
-    if (!response.ok) {
-      console.error('[MessageGrouper] Transcription error:', response.status, await response.text());
-      return null;
-    }
-
-    const result = await response.json();
-    console.log('[MessageGrouper] Transcription result:', result.text);
-    return result.text || null;
-  } catch (error) {
-    console.error('[MessageGrouper] Error transcribing audio:', error);
     return null;
   }
 }
