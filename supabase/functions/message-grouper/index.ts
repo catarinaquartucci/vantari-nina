@@ -30,12 +30,13 @@ serve(async (req) => {
   try {
     console.log('[MessageGrouper] Starting message grouping...');
 
+    // Atomic claim: SELECT + UPDATE in a single DB transaction via RPC.
+    // A plain SELECT + separate UPDATE is non-atomic: two concurrent
+    // message-grouper instances can both read the same rows before either
+    // marks them processed, leading to duplicate orchestrator calls and
+    // duplicate WhatsApp replies.
     const { data: readyMessages, error: fetchError } = await supabase
-      .from('message_grouping_queue')
-      .select('*')
-      .eq('processed', false)
-      .lte('process_after', new Date().toISOString())
-      .order('created_at', { ascending: true });
+      .rpc('claim_message_grouper_batch', { p_limit: 50 });
 
     if (fetchError) throw fetchError;
 
@@ -47,14 +48,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[MessageGrouper] Found ${readyMessages.length} messages ready to process`);
-
-    // Mark as processed immediately
-    const readyIds = readyMessages.map(m => m.id);
-    await supabase
-      .from('message_grouping_queue')
-      .update({ processed: true })
-      .in('id', readyIds);
+    console.log(`[MessageGrouper] Found ${readyMessages.length} messages ready to process (claimed atomically)`);
 
     // Group by phone number
     const grouped: Record<string, typeof readyMessages> = {};

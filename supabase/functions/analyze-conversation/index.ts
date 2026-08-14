@@ -12,6 +12,45 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function syncToVantariApp(supabase: any, contact_id: string) {
+  try {
+    const { data: ct } = await supabase
+      .from('contacts')
+      .select('phone_number, name, call_name, cpf, numero_processo, honorarios_pct')
+      .eq('id', contact_id)
+      .maybeSingle();
+    if (!ct?.phone_number) return;
+    const realName = ct.call_name || ct.name;
+    await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Ingest-Secret': Deno.env.get('VANTARI_INGEST_SECRET') ?? ''
+      },
+      body: JSON.stringify({
+        workspace: '53092199-7b75-4342-a897-f589d6f34922',
+        source: 'nina',
+        person: {
+          phone: ct.phone_number,
+          ...(realName && { name: realName }),
+          ...(ct.cpf && { cpf: ct.cpf }),
+        },
+        ...(ct.numero_processo && { processo: {
+          numero_cnj: ct.numero_processo,
+          ...(ct.honorarios_pct != null && { honorarios_pct: ct.honorarios_pct }),
+        }}),
+        payload: {
+          channel: 'whatsapp',
+          ...(ct.numero_processo && { process_number: ct.numero_processo }),
+        }
+      })
+    });
+    console.log('[Analyze] Synced to Vantari App:', ct.phone_number);
+  } catch (err) {
+    console.error('[Analyze] Failed to sync to Vantari App:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -45,8 +84,12 @@ serve(async (req) => {
 
       const needsCpf = !existingContact?.cpf;
       const needsProcesso = !existingContact?.numero_processo;
+      // needsName = true quando call_name está vazio OU parece apelido do WhatsApp
+      // (menos de 2 palavras ou menos de 8 chars = 'Lp', 'Cliente', 'GG', 'jean', etc.)
+      const _cn = existingContact?.call_name?.trim() || '';
+      const needsName = !_cn || _cn.split(/\s+/).length < 2 || _cn.length < 8;
 
-      if ((needsCpf || needsProcesso) && user_message && user_message.trim().length > 0) {
+      if ((needsCpf || needsProcesso || needsName) && user_message && user_message.trim().length > 0) {
         const extractMessages = [
           { role: 'system', content: 'Você extrai dados estruturados de mensagens. Retorne null para campos não mencionados claramente.' },
           { role: 'user', content: `Extraia da mensagem abaixo o CPF (formato XXX.XXX.XXX-XX ou apenas dígitos) e o número do processo trabalhista (ex: XXXXXXX-XX.XXXX.X.XX.XXXX), se mencionados.\n\nMENSAGEM:\n${user_message.substring(0, 2000)}` }
@@ -59,11 +102,12 @@ serve(async (req) => {
             parameters: {
               type: 'object',
               properties: {
-                cpf: { type: ['string', 'null'], description: 'CPF do cliente. null se não mencionado.' },
-                numero_processo: { type: ['string', 'null'], description: 'Número do processo trabalhista. null se não mencionado.' }
+                                nome_completo: { type: 'string', description: 'Nome completo do cliente se mencionado explicitamente. null se nao mencionado.' },
+              honorarios_pct: { type: 'number', description: 'Percentual de honorarios do advogado mencionado pelo cliente (ex: 30 para 30%). null se nao mencionado.' },
+cpf: { type: 'string', description: 'CPF do cliente. null se não mencionado.' },
+                numero_processo: { type: 'string', description: 'Número do processo trabalhista. null se não mencionado.' }
               },
               required: ['cpf', 'numero_processo'],
-              additionalProperties: false
             }
           }
         }]);
@@ -75,11 +119,14 @@ serve(async (req) => {
         if (tc) {
           const extracted = tc.args as { cpf?: string | null; numero_processo?: string | null };
           const updates: Record<string, string> = {};
+          if (extracted.nome_completo && needsName) updates.call_name = String(extracted.nome_completo).trim();
+          if (extracted.honorarios_pct != null && !existingContact?.honorarios_pct) updates.honorarios_pct = Number(extracted.honorarios_pct);
           if (extracted.cpf && needsCpf) updates.cpf = String(extracted.cpf).trim();
           if (extracted.numero_processo && needsProcesso) updates.numero_processo = String(extracted.numero_processo).trim();
           if (Object.keys(updates).length > 0) {
             await supabase.from('contacts').update(updates).eq('id', contact_id);
-            console.log('[Analyze] Lightweight CPF/processo extraction updated:', updates);
+            console.log('[Analyze] Lightweight extraction updated:', updates);
+            await syncToVantariApp(supabase, contact_id);
           }
         }
       }
@@ -219,7 +266,6 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
               }
             },
             required: ["interests", "pain_points", "qualification_score", "next_best_action", "budget_indication", "decision_timeline"],
-            additionalProperties: false
           }
         }
       }
@@ -252,7 +298,6 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
               }
             },
             required: ["suggested_stage_id", "confidence", "reasoning"],
-            additionalProperties: false
           }
         }
       });
@@ -369,6 +414,7 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
           console.error('[Analyze] Error updating CPF/processo:', contactUpdateError);
         } else {
           console.log('[Analyze] CPF/processo updated:', contactUpdates);
+          await syncToVantariApp(supabase, contact_id);
         }
       }
 

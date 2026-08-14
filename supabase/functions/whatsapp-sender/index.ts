@@ -161,6 +161,31 @@ serve(async (req) => {
 
       for (const item of queueItems) {
         try {
+          // Re-check conversation status before sending (prevents race condition with human takeover)
+          if (item.from_type === 'nina') {
+            const { data: convCheck } = await supabase
+              .from('conversations')
+              .select('status')
+              .eq('id', item.conversation_id)
+              .maybeSingle();
+            if (convCheck?.status !== 'nina') {
+              console.log('[Sender] Conversation not in Nina mode (' + convCheck?.status + '), skipping send:', item.id);
+              await supabase.from('send_queue')
+                .update({ status: 'cancelled', sent_at: new Date().toISOString() })
+                .eq('id', item.id);
+              continue;
+            }
+          }
+          // Block noise/internal messages from being sent to WhatsApp
+          const noisePatterns = [/^noise\.?$/i, /do not generate/i, /\[noise\]/i, /\[silence\]/i, /\[messagecontextinfo\]/i, /\[reactionmessage\]/i];
+          const trimmedContent = (item.content || '').trim();
+          if (!trimmedContent || noisePatterns.some(p => p.test(trimmedContent))) {
+            console.log('[Sender] Blocked noise/empty message, cancelling:', item.id, JSON.stringify(trimmedContent.slice(0, 80)));
+            await supabase.from('send_queue')
+              .update({ status: 'cancelled', sent_at: new Date().toISOString() })
+              .eq('id', item.id);
+            continue;
+          }
           const itemInstances = Array.from(
             new Set([
               item.metadata?.evolution_instance,
@@ -214,8 +239,44 @@ serve(async (req) => {
             .update({ status: 'completed', sent_at: new Date().toISOString() })
             .eq('id', item.id);
 
+
+          // Sync outgoing message to Next inbox (query contact for phone)
+          supabase.from('contacts').select('phone_number, call_name, cpf').eq('id', item.contact_id).maybeSingle().then(({ data: ct }) => {
+            if (!ct?.phone_number) return;
+            fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest-message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Ingest-Secret': Deno.env.get('VANTARI_INGEST_SECRET') ?? '' },
+              body: JSON.stringify({
+                workspace: '53092199-7b75-4342-a897-f589d6f34922',
+                person: { phone: '+' + ct.phone_number.replace(/\D/g,''), ...(ct.call_name && { name: ct.call_name }), ...(ct.cpf && { cpf: ct.cpf }) },
+                external_conversation_id: item.conversation_id,
+                direction: 'out', sender: 'nina',
+                body: item.content || '',
+                external_message_id: item.id
+              })
+            }).catch(e => console.error('[Sender] ingest-message failed:', e));
+          }).catch(e => console.error('[Sender] contact lookup failed:', e));
           totalSent++;
           console.log(`[Sender] Successfully sent message ${item.id} (${totalSent} total)`);
+          // Sync outgoing message to Vantari App
+          if (item.contact_id && item.content) {
+            try {
+              const { data: c } = await supabase.from('contacts').select('phone_number,name').eq('id', item.contact_id).single();
+              if (c?.phone_number) {
+                await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Ingest-Secret': Deno.env.get('VANTARI_INGEST_SECRET') ?? '' },
+                  body: JSON.stringify({
+                    workspace: '53092199-7b75-4342-a897-f589d6f34922',
+                    source: 'nina',
+                    person: { phone: c.phone_number, name: c.name },
+                    payload: { channel: 'whatsapp', content: item.content, direction: 'outbound' }
+                  })
+                });
+                console.log('[Sender] Synced outbound to Vantari App');
+              }
+            } catch (e) { console.error('[Sender] Sync failed:', e); }
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error';
           console.error(`[Sender] Error sending item ${item.id}:`, error);

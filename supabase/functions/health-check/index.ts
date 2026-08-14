@@ -171,6 +171,30 @@ Deno.serve(async (req) => {
       results.push({ component: 'nina_settings', status: 'ok', message: 'Configurações do sistema encontradas' });
     }
 
+    // 3b. Send-message pipeline schema — catches column drift (e.g. workspace_id/channel
+    // added to a query before the migration exists) that silently breaks human-mode replies
+    // for ALL contacts as "Contact not found" instead of a visible error.
+    const { error: contactsSchemaErr } = await supabase
+      .from('contacts')
+      .select('id, phone_number, whatsapp_id, call_name, name, cpf', { count: 'exact', head: true });
+    const { error: conversationsSchemaErr } = await supabase
+      .from('conversations')
+      .select('id, contact_id, status, is_active', { count: 'exact', head: true });
+
+    if (contactsSchemaErr || conversationsSchemaErr) {
+      results.push({
+        component: 'send_message_pipeline',
+        status: 'error',
+        message: 'Query do envio de mensagens (send-message) está quebrada por incompatibilidade de schema — respostas humanas vão falhar para TODOS os contatos.',
+        details: {
+          contacts_error: contactsSchemaErr?.message,
+          conversations_error: conversationsSchemaErr?.message,
+        },
+      });
+    } else {
+      results.push({ component: 'send_message_pipeline', status: 'ok', message: 'Schema de contacts/conversations compatível com o pipeline de envio' });
+    }
+
     // 4. Pipeline stages
     const { data: stages } = await supabase.from('pipeline_stages').select('id, title').eq('is_active', true);
     if (stages && stages.length > 0) {

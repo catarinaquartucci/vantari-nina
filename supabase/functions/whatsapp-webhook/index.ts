@@ -156,6 +156,22 @@ serve(async (req) => {
         });
       }
 
+      // Skip Evolution delivery confirmations ('Enviado') mistakenly sent as messages
+      const rawMsgContent = (data.message?.conversation || data.message?.extendedTextMessage?.text || '').trim();
+      // Also skip messageContextInfo and other non-content types
+      const msgKeys = Object.keys(data.message || {}).filter(k => k !== 'messageContextInfo');
+      if (msgKeys.length === 0) {
+        console.log('[Webhook] Skipping messageContextInfo-only message');
+        return new Response(JSON.stringify({ status: 'ignored_context' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      if (rawMsgContent === 'Enviado' || rawMsgContent === 'Delivered') {
+        console.log('[Webhook] Skipping delivery confirmation message');
+        return new Response(JSON.stringify({ status: 'ignored_delivery' }), {
+          status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
       // 1. Filter group messages by remoteJid
       const remoteJid = data.key?.remoteJid || '';
       if (remoteJid.includes('@g.us')) {
@@ -312,6 +328,30 @@ serve(async (req) => {
         contact = phoneContact;
       }
 
+      // Try alternate Brazilian phone format (12 vs 13 digits) before creating a duplicate
+      if (!contact && phoneResolved && phoneNumber) {
+        const digits = phoneNumber.replace(/\D/g, '');
+        let altPhone: string | null = null;
+        if (digits.length === 13 && digits.startsWith('55')) {
+          altPhone = digits.slice(0, 4) + digits.slice(5);
+        } else if (digits.length === 12 && digits.startsWith('55')) {
+          altPhone = digits.slice(0, 4) + '9' + digits.slice(4);
+        }
+        if (altPhone) {
+          const { data: altContact } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('phone_number', altPhone)
+            .limit(1)
+            .maybeSingle();
+          if (altContact) {
+            contact = altContact;
+            console.log('[Webhook] Found contact by alternate phone format:', altPhone, '->', phoneNumber);
+            await supabase.from('contacts').update({ phone_number: phoneNumber, updated_at: new Date().toISOString() }).eq('id', altContact.id);
+          }
+        }
+      }
+
       if (!contact) {
         if (!phoneResolved) {
           // Cannot create contact without a valid phone — use a temporary placeholder
@@ -338,6 +378,7 @@ serve(async (req) => {
         }
         contact = newContact;
         console.log('[Webhook] Created new contact:', contact.id, 'phone:', phoneResolved ? phoneNumber : `unresolved(${rawId})`);
+        EdgeRuntime.waitUntil(syncToVantariApp({ phone: phoneResolved ? phoneNumber : undefined, name: contactName || undefined }));
       } else {
         const updates: any = { last_activity: new Date().toISOString() };
         
@@ -395,6 +436,11 @@ serve(async (req) => {
         console.log('[Webhook] Created new conversation:', conversation.id);
       }
 
+      // Block Nina if human mode
+      if (conversation.status === 'human') {
+        console.log('[Webhook] Conversation in human mode, skipping Nina processing for:', conversation.id);
+        // Still save the message to DB (handled below) but skip Nina queue at end
+      }
       // 3. Determine message content and type from Evolution payload
       const msg = data.message || {};
       let messageContent = '';
@@ -468,6 +514,27 @@ serve(async (req) => {
       }
 
       console.log('[Webhook] Created message:', dbMessage.id);
+      // Sync incoming message to Next inbox
+      EdgeRuntime.waitUntil(
+        fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Ingest-Secret': Deno.env.get('VANTARI_INGEST_SECRET') ?? '' },
+          body: JSON.stringify({
+            workspace: '53092199-7b75-4342-a897-f589d6f34922',
+            person: { phone: '+' + (contact.phone_number || '').replace(/\D/g,''), ...(contact.call_name && { name: contact.call_name }), ...(contact.cpf && { cpf: contact.cpf }) },
+            external_conversation_id: conversation.id,
+            direction: 'in', sender: 'customer',
+            body: messageContent,
+            external_message_id: whatsappMessageId
+          })
+        }).then(r => r.json()).then(d => console.log('[Webhook] ingest-message ok:', JSON.stringify(d))).catch(e => console.error('[Webhook] ingest-message failed:', e))
+      );
+      EdgeRuntime.waitUntil(syncToVantariApp({
+        phone: phoneResolved ? phoneNumber! : undefined,
+        name: contactName || undefined,
+        message: messageContent || undefined,
+        direction: 'inbound',
+      }));
 
       // 5. Update conversation last_message_at
       await supabase
@@ -475,6 +542,14 @@ serve(async (req) => {
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', conversation.id);
 
+      // Skip Nina processing if a human has taken over the conversation
+      if (conversation.status !== 'nina') {
+        console.log('[Webhook] Conversation not in Nina mode (' + conversation.status + '), skipping Nina queue:', conversation.id);
+        return new Response(JSON.stringify({ status: 'processed_human_mode' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
       // 6. Queue for message grouping
       const processAfter = new Date(Date.now() + GROUPING_DELAY_MS).toISOString();
 
@@ -550,3 +625,28 @@ serve(async (req) => {
     });
   }
 });
+async function syncToVantariApp(contact) {
+  try {
+    if (!contact.phone && !contact.cpf) return;
+    await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Ingest-Secret': Deno.env.get('VANTARI_INGEST_SECRET') ?? ''
+      },
+      body: JSON.stringify({
+        workspace: '53092199-7b75-4342-a897-f589d6f34922',
+        source: 'nina',
+        person: {
+          ...(contact.phone && { phone: contact.phone }),
+          ...(contact.name  && { name: contact.name }),
+          ...(contact.cpf   && { cpf: contact.cpf }),
+        },
+        payload: { channel: 'whatsapp', ...(contact.message && { content: contact.message, direction: contact.direction || 'inbound' }) }
+      })
+    });
+    console.log('[Webhook] Synced to Vantari App:', contact.phone);
+  } catch (err) {
+    console.error('[Webhook] Failed to sync to Vantari App:', err);
+  }
+}

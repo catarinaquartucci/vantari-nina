@@ -18,6 +18,25 @@ export function base64UrlEncode(input: string | ArrayBuffer): string {
     .replace(/=+$/g, '');
 }
 
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Request to ${url} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export function pemToArrayBuffer(pem: string): ArrayBuffer {
   const normalizedPem = pem.replace(/\\n/g, '\n');
   const base64 = normalizedPem
@@ -34,7 +53,13 @@ export function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
 export async function getVertexAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now()) {
+    return cachedToken.token;
+  }
+
   const clientEmail = Deno.env.get('VERTEX_CLIENT_EMAIL');
   const privateKey = Deno.env.get('VERTEX_PRIVATE_KEY');
 
@@ -70,14 +95,18 @@ export async function getVertexAccessToken(): Promise<string> {
 
   const jwt = `${unsignedJwt}.${base64UrlEncode(signature)}`;
 
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
-    }),
-  });
+  const tokenResponse = await fetchWithTimeout(
+    'https://oauth2.googleapis.com/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt,
+      }),
+    },
+    15000
+  );
 
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
@@ -89,6 +118,11 @@ export async function getVertexAccessToken(): Promise<string> {
   if (!tokenData.access_token) {
     throw new Error('Vertex OAuth access_token not returned');
   }
+
+  cachedToken = {
+    token: tokenData.access_token,
+    expiresAt: Date.now() + 55 * 60 * 1000,
+  };
 
   return tokenData.access_token;
 }
@@ -123,7 +157,7 @@ export async function callVertexAI(
     };
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`,
     {
       method: 'POST',
@@ -132,7 +166,8 @@ export async function callVertexAI(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-    }
+    },
+    45000
   );
 
   if (!response.ok) {
@@ -191,7 +226,7 @@ export async function callVertexAIWithTools(
     };
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`,
     {
       method: 'POST',
@@ -200,7 +235,8 @@ export async function callVertexAIWithTools(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-    }
+    },
+    45000
   );
 
   if (!response.ok) {
@@ -258,7 +294,7 @@ export async function transcribeAudioVertex(
     generationConfig: { temperature: 0 },
   };
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`,
     {
       method: 'POST',
@@ -267,7 +303,8 @@ export async function transcribeAudioVertex(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(requestBody),
-    }
+    },
+    45000
   );
 
   if (!response.ok) {
