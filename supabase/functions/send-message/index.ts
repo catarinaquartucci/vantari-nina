@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-nina-secret',
 };
 const INGEST_MSG_URL = 'https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest-message';
-const INGEST_SECRET = 'eu4fyEBba6IhgFBCQbvhwrXmOVveklnNYZhNNy8mVEU]';
+const INGEST_SECRET = Deno.env.get('VANTARI_INGEST_SECRET') ?? '';
 const WORKSPACE   = '53092199-7b75-4342-a897-f589d6f34922';
 
 serve(async (req) => {
