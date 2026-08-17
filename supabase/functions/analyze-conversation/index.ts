@@ -50,7 +50,7 @@ async function syncToVantariApp(supabase: any, contact_id: string, newAttributes
       }).eq('id', contact_id);
     }
 
-    await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
+    const ingestResp = await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -75,7 +75,12 @@ async function syncToVantariApp(supabase: any, contact_id: string, newAttributes
         }
       })
     });
-    console.log('[Analyze] Synced to Vantari App:', ct.phone_number, mergedAttrs);
+    const ingestBody = await ingestResp.text();
+    if (!ingestResp.ok) {
+      console.error(`[Analyze] Ingest respondeu ${ingestResp.status} para ${ct.phone_number}:`, ingestBody);
+    } else {
+      console.log('[Analyze] Synced to Vantari App:', ct.phone_number, mergedAttrs, '| resposta:', ingestResp.status, ingestBody);
+    }
   } catch (err) {
     console.error('[Analyze] Failed to sync to Vantari App:', err);
   }
