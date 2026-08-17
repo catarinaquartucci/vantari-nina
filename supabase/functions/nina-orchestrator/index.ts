@@ -130,151 +130,17 @@ serve(async (req) => {
 
     console.log(`[Nina] Processing ${queueItems.length} messages`);
 
+    const CONCURRENCY = 3;
     let processed = 0;
 
-    for (const item of queueItems) {
-      try {
-        // Get user_id from conversation to fetch correct settings
-        const { data: conversation } = await supabase
-          .from('conversations')
-          .select('user_id')
-          .eq('id', item.conversation_id)
-          .single();
-
-        if (!conversation) {
-          console.log('[Nina] Conversation not found:', item.conversation_id);
-          await supabase
-            .from('nina_processing_queue')
-            .update({ 
-              status: 'failed', 
-              processed_at: new Date().toISOString(),
-              error_message: 'Conversation not found'
-            })
-            .eq('id', item.id);
-          continue;
-        }
-
-        // Buscar settings com fallback triplo (user_id → global → any)
-        let settings = null;
-        
-        // 1. Tentar buscar por user_id da conversa
-        if (conversation.user_id) {
-          const { data: userSettings } = await supabase
-            .from('nina_settings')
-            .select('*')
-            .eq('user_id', conversation.user_id)
-            .maybeSingle();
-          settings = userSettings;
-          if (settings) {
-            console.log('[Nina] Found settings for user:', conversation.user_id);
-          }
-        }
-        
-        // 2. Se não encontrou, tentar buscar global (user_id is null)
-        if (!settings) {
-          console.log('[Nina] No user-specific settings, trying global...');
-          const { data: globalSettings } = await supabase
-            .from('nina_settings')
-            .select('*')
-            .is('user_id', null)
-            .maybeSingle();
-          settings = globalSettings;
-          if (settings) {
-            console.log('[Nina] Found global settings (user_id is null)');
-          }
-        }
-        
-        // 3. Último fallback: buscar qualquer settings existente
-        if (!settings) {
-          console.log('[Nina] No global settings, fetching any available...');
-          const { data: anySettings } = await supabase
-            .from('nina_settings')
-            .select('*')
-            .limit(1)
-            .maybeSingle();
-          settings = anySettings;
-          if (settings) {
-            console.log('[Nina] Using fallback settings from:', settings.id);
-          }
-        }
-
-        // Use default settings if nothing found
-        const effectiveSettings = settings || {
-          is_active: true,
-          auto_response_enabled: true,
-          system_prompt_override: null,
-          ai_model_mode: 'flash',
-          response_delay_min: 1000,
-          response_delay_max: 3000,
-          message_breaking_enabled: false,
-          audio_response_enabled: false,
-          elevenlabs_api_key: null,
-          ai_scheduling_enabled: true,
-          user_id: conversation.user_id
-        };
-        
-        if (!settings) {
-          console.log('[Nina] No settings found in database, using hardcoded defaults');
-        }
-
-        // Check if Nina is active for this user
-        if (!effectiveSettings.is_active) {
-          console.log('[Nina] Nina is disabled for user:', conversation.user_id);
-          await supabase
-            .from('nina_processing_queue')
-            .update({ 
-              status: 'completed', 
-              processed_at: new Date().toISOString(),
-              error_message: 'Nina disabled for this user'
-            })
-            .eq('id', item.id);
-          continue;
-        }
-
-        // Use default prompt if not configured
-        const systemPrompt = effectiveSettings.system_prompt_override || getDefaultSystemPrompt();
-        
-        console.log('[Nina] Processing with settings:', {
-          is_active: effectiveSettings.is_active,
-          auto_response_enabled: effectiveSettings.auto_response_enabled,
-          ai_model_mode: effectiveSettings.ai_model_mode,
-          has_system_prompt: !!effectiveSettings.system_prompt_override,
-          has_whatsapp_config: !!effectiveSettings.whatsapp_phone_number_id,
-          has_elevenlabs: !!effectiveSettings.elevenlabs_api_key,
-        });
-        
-        await processQueueItem(supabase, item, systemPrompt, effectiveSettings);
-        
-        // Mark as completed
-        await supabase
-          .from('nina_processing_queue')
-          .update({ 
-            status: 'completed', 
-            processed_at: new Date().toISOString() 
-          })
-          .eq('id', item.id);
-        
-        processed++;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[Nina] Error processing item ${item.id}:`, error);
-        
-        // Mark as failed with retry
-        const newRetryCount = (item.retry_count || 0) + 1;
-        const shouldRetry = newRetryCount < 3;
-        
-        await supabase
-          .from('nina_processing_queue')
-          .update({ 
-            status: shouldRetry ? 'pending' : 'failed',
-            retry_count: newRetryCount,
-            error_message: errorMessage,
-            scheduled_for: shouldRetry 
-              ? new Date(Date.now() + newRetryCount * 30000).toISOString() 
-              : null
-          })
-          .eq('id', item.id);
-      }
+    for (let i = 0; i < queueItems.length; i += CONCURRENCY) {
+      const chunk = queueItems.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map((item: any) => handleQueueItem(supabase, item))
+      );
+      processed += results.filter(
+        (r) => r.status === 'fulfilled' && r.value === true
+      ).length;
     }
 
     console.log(`[Nina] Processed ${processed}/${queueItems.length} messages`);
@@ -292,6 +158,155 @@ serve(async (req) => {
     });
   }
 });
+
+// Processa um único item da fila: busca conversa/settings, chama processQueueItem
+// e atualiza o status final (completed/failed/retry). Retorna true se processado com sucesso.
+async function handleQueueItem(supabase: any, item: any): Promise<boolean> {
+  try {
+    // Get user_id from conversation to fetch correct settings
+    const { data: conversation } = await supabase
+      .from('conversations')
+      .select('user_id')
+      .eq('id', item.conversation_id)
+      .single();
+
+    if (!conversation) {
+      console.log('[Nina] Conversation not found:', item.conversation_id);
+      await supabase
+        .from('nina_processing_queue')
+        .update({
+          status: 'failed',
+          processed_at: new Date().toISOString(),
+          error_message: 'Conversation not found'
+        })
+        .eq('id', item.id);
+      return false;
+    }
+
+    // Buscar settings com fallback triplo (user_id → global → any)
+    let settings = null;
+
+    // 1. Tentar buscar por user_id da conversa
+    if (conversation.user_id) {
+      const { data: userSettings } = await supabase
+        .from('nina_settings')
+        .select('*')
+        .eq('user_id', conversation.user_id)
+        .maybeSingle();
+      settings = userSettings;
+      if (settings) {
+        console.log('[Nina] Found settings for user:', conversation.user_id);
+      }
+    }
+
+    // 2. Se não encontrou, tentar buscar global (user_id is null)
+    if (!settings) {
+      console.log('[Nina] No user-specific settings, trying global...');
+      const { data: globalSettings } = await supabase
+        .from('nina_settings')
+        .select('*')
+        .is('user_id', null)
+        .maybeSingle();
+      settings = globalSettings;
+      if (settings) {
+        console.log('[Nina] Found global settings (user_id is null)');
+      }
+    }
+
+    // 3. Último fallback: buscar qualquer settings existente
+    if (!settings) {
+      console.log('[Nina] No global settings, fetching any available...');
+      const { data: anySettings } = await supabase
+        .from('nina_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      settings = anySettings;
+      if (settings) {
+        console.log('[Nina] Using fallback settings from:', settings.id);
+      }
+    }
+
+    // Use default settings if nothing found
+    const effectiveSettings = settings || {
+      is_active: true,
+      auto_response_enabled: true,
+      system_prompt_override: null,
+      ai_model_mode: 'flash',
+      response_delay_min: 1000,
+      response_delay_max: 3000,
+      message_breaking_enabled: false,
+      audio_response_enabled: false,
+      elevenlabs_api_key: null,
+      ai_scheduling_enabled: true,
+      user_id: conversation.user_id
+    };
+
+    if (!settings) {
+      console.log('[Nina] No settings found in database, using hardcoded defaults');
+    }
+
+    // Check if Nina is active for this user
+    if (!effectiveSettings.is_active) {
+      console.log('[Nina] Nina is disabled for user:', conversation.user_id);
+      await supabase
+        .from('nina_processing_queue')
+        .update({
+          status: 'completed',
+          processed_at: new Date().toISOString(),
+          error_message: 'Nina disabled for this user'
+        })
+        .eq('id', item.id);
+      return false;
+    }
+
+    // Use default prompt if not configured
+    const systemPrompt = effectiveSettings.system_prompt_override || getDefaultSystemPrompt();
+
+    console.log('[Nina] Processing with settings:', {
+      is_active: effectiveSettings.is_active,
+      auto_response_enabled: effectiveSettings.auto_response_enabled,
+      ai_model_mode: effectiveSettings.ai_model_mode,
+      has_system_prompt: !!effectiveSettings.system_prompt_override,
+      has_whatsapp_config: !!effectiveSettings.whatsapp_phone_number_id,
+      has_elevenlabs: !!effectiveSettings.elevenlabs_api_key,
+    });
+
+    await processQueueItem(supabase, item, systemPrompt, effectiveSettings);
+
+    // Mark as completed
+    await supabase
+      .from('nina_processing_queue')
+      .update({
+        status: 'completed',
+        processed_at: new Date().toISOString()
+      })
+      .eq('id', item.id);
+
+    return true;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[Nina] Error processing item ${item.id}:`, error);
+
+    // Mark as failed with retry
+    const newRetryCount = (item.retry_count || 0) + 1;
+    const shouldRetry = newRetryCount < 3;
+
+    await supabase
+      .from('nina_processing_queue')
+      .update({
+        status: shouldRetry ? 'pending' : 'failed',
+        retry_count: newRetryCount,
+        error_message: errorMessage,
+        scheduled_for: shouldRetry
+          ? new Date(Date.now() + newRetryCount * 30000).toISOString()
+          : null
+      })
+      .eq('id', item.id);
+
+    return false;
+  }
+}
 
 // Generate audio using ElevenLabs
 async function generateAudioElevenLabs(settings: any, text: string): Promise<ArrayBuffer | null> {
@@ -741,7 +756,7 @@ async function processQueueItem(
     vertexContents,
     vertexTools,
     vertexSystem,
-    { temperature: aiSettings.temperature, maxOutputTokens: 1000 }
+    { temperature: aiSettings.temperature, maxOutputTokens: 2048 }
   );
 
   // Extract text content and function calls from Vertex AI response
@@ -1173,9 +1188,7 @@ Trigger para oferecer agendamento:
 - Lead atende critérios de qualificação
 - Momento natural da conversa (não force)
 </tool_usage_protocol>
-async function processQueueItem(
-  supabase: any,
-  geminiApiKey: string,
+
 <cognitive_process>
 Para CADA mensagem do lead, siga este processo mental silencioso:
 1. ANALISAR: Em qual etapa o lead está? (Início, Descoberta, Educação, Fechamento)
@@ -1275,12 +1288,28 @@ function buildEnhancedPrompt(basePrompt: string, contact: any, memory: any): str
 }
 
 function breakMessageIntoChunks(content: string): string[] {
-  const chunks = content
+  const raw = content
     .split(/\n\n+/)
     .map(chunk => chunk.trim())
     .filter(chunk => chunk.length > 0);
-  
-  return chunks.length > 0 ? chunks : [content];
+
+  if (raw.length === 0) return [content];
+
+  const terminal = /[.!?:)"\u00bb]$/;
+  const merged: string[] = [];
+  let current = raw[0];
+
+  for (let i = 1; i < raw.length; i++) {
+    if (!terminal.test(current)) {
+      current = current + ' ' + raw[i];
+    } else {
+      merged.push(current);
+      current = raw[i];
+    }
+  }
+  merged.push(current);
+
+  return merged.length > 0 ? merged : [content];
 }
 
 function getModelSettings(
