@@ -12,15 +12,44 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-async function syncToVantariApp(supabase: any, contact_id: string) {
+// Bucket horário do contato em Brasília (UTC-3, sem horário de verão desde 2019).
+// comercial = dia de semana 8h-18h | noite = dia de semana 18h-24h | madrugada_fds = resto (0h-8h em dia de semana OU qualquer hora em sáb/dom)
+function computeMomento(date: Date): string {
+  const brDate = new Date(date.getTime() - 3 * 60 * 60 * 1000);
+  const day = brDate.getUTCDay();
+  const hour = brDate.getUTCHours();
+  if (day === 0 || day === 6) return 'madrugada_fds';
+  if (hour >= 8 && hour < 18) return 'comercial';
+  if (hour >= 18) return 'noite';
+  return 'madrugada_fds';
+}
+
+async function syncToVantariApp(supabase: any, contact_id: string, newAttributes?: Record<string, string | null | undefined>) {
   try {
     const { data: ct } = await supabase
       .from('contacts')
-      .select('phone_number, name, call_name, cpf, numero_processo, honorarios_pct')
+      .select('phone_number, name, call_name, cpf, numero_processo, honorarios_pct, client_memory')
       .eq('id', contact_id)
       .maybeSingle();
     if (!ct?.phone_number) return;
     const realName = ct.call_name || ct.name;
+
+    // attributes é acumulativo: preserva o que já foi aprendido, só sobrescreve com chaves novas não-nulas
+    const mergedAttrs: Record<string, string> = { ...(ct.client_memory?.next_attributes || {}) };
+    if (newAttributes) {
+      for (const [k, v] of Object.entries(newAttributes)) {
+        if (v !== null && v !== undefined) mergedAttrs[k] = v;
+      }
+    }
+    // conhece_processo: se já temos o número do processo, isso é fato conhecido — nunca deixa a IA contradizer
+    if (ct.numero_processo) mergedAttrs.conhece_processo = 'sabe_numero_trt';
+
+    if (Object.keys(mergedAttrs).length > 0) {
+      await supabase.from('contacts').update({
+        client_memory: { ...(ct.client_memory || {}), next_attributes: mergedAttrs }
+      }).eq('id', contact_id);
+    }
+
     await fetch('https://ejhrlrasepowdcdnggmv.supabase.co/functions/v1/ingest', {
       method: 'POST',
       headers: {
@@ -39,13 +68,14 @@ async function syncToVantariApp(supabase: any, contact_id: string) {
           numero_cnj: ct.numero_processo,
           ...(ct.honorarios_pct != null && { honorarios_pct: ct.honorarios_pct }),
         }}),
+        ...(Object.keys(mergedAttrs).length > 0 && { attributes: mergedAttrs }),
         payload: {
           channel: 'whatsapp',
           ...(ct.numero_processo && { process_number: ct.numero_processo }),
         }
       })
     });
-    console.log('[Analyze] Synced to Vantari App:', ct.phone_number);
+    console.log('[Analyze] Synced to Vantari App:', ct.phone_number, mergedAttrs);
   } catch (err) {
     console.error('[Analyze] Failed to sync to Vantari App:', err);
   }
@@ -263,9 +293,49 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
               numero_processo: {
                 type: "string",
                 description: "Número do processo trabalhista se mencionado na conversa (ex: XXXXXXX-XX.XXXX.X.XX.XXXX). Retorne null se não mencionado."
+              },
+              conhece_processo: {
+                type: "string",
+                enum: ["sabe_numero_trt", "sabe_tem_processo", "nao_tem"],
+                description: "sabe_numero_trt se o cliente já informou o número do processo. sabe_tem_processo se ele confirmou ter um processo trabalhista mas não informou o número. nao_tem se ele disse que não tem processo. Retorne null se ainda não está claro."
+              },
+              nivel_urgencia: {
+                type: "string",
+                enum: ["alta_dividas", "alta_dinheiro_agora", "media_planejar", "baixa_curiosidade"],
+                description: "Nível de urgência do cliente, SOMENTE se ele mencionou isso espontaneamente (nunca pergunte sobre isso). alta_dividas = mencionou dívidas/contas atrasadas. alta_dinheiro_agora = precisa de dinheiro urgente sem mencionar dívida específica. media_planejar = quer planejar/organizar a vida financeira, sem urgência imediata. baixa_curiosidade = só está curioso, sem necessidade real no momento. Retorne null se o cliente não deu nenhum sinal disso."
+              },
+              valor_estimado: {
+                type: "string",
+                enum: ["acima_50k", "de_30k_50k", "de_20k_30k", "de_10k_20k", "abaixo_10k", "nao_sabe"],
+                description: "Faixa de valor do processo, SOMENTE se o cliente mencionou espontaneamente um valor ou disse explicitamente que não sabe (nunca pergunte sobre valor — a Nina não deve tocar nesse assunto). Retorne null se o assunto não veio à tona."
+              },
+              situacao_profissional: {
+                type: "string",
+                enum: ["empregado", "desempregado_menos_3m", "desempregado_3m_mais", "subempregado_informal", "aposentado"],
+                description: "Situação profissional atual do cliente, SOMENTE se mencionada espontaneamente na conversa. Retorne null se não foi dito."
+              },
+              qualidade_info: {
+                type: "string",
+                enum: ["completas_coerentes", "parciais_coerentes", "vagas_inconsistentes"],
+                description: "Sua avaliação de quão completas e coerentes estão as informações dadas pelo cliente até agora nesta conversa (nome, CPF, processo, respostas em geral). completas_coerentes = respostas claras e consistentes. parciais_coerentes = informação incompleta mas o que foi dito é coerente. vagas_inconsistentes = respostas vagas, evasivas ou contraditórias."
+              },
+              cidade_estado: {
+                type: "string",
+                enum: ["sao_paulo", "rio_janeiro", "bh_bsb_salvador", "outra_capital", "cidade_media", "cidade_pequena"],
+                description: "Cidade/região do cliente, SOMENTE se ele mencionou espontaneamente onde mora (nunca pergunte isso). Retorne null se não foi mencionado."
+              },
+              faixa_etaria: {
+                type: "string",
+                enum: ["30_50", "25_30_ou_50_60", "18_25_ou_60_mais"],
+                description: "Faixa de idade do cliente, SOMENTE se ele mencionou espontaneamente a idade ou deu um forte indício (nunca pergunte isso). Retorne null se não há indício."
+              },
+              fonte: {
+                type: "string",
+                enum: ["indicacao", "organica", "pago", "social", "outros"],
+                description: "Como o cliente disse ter conhecido a Vantari, SOMENTE se ele mencionou espontaneamente (ex: 'uma amiga me indicou' = indicacao, 'vi um anúncio' = pago, 'vi no Instagram/TikTok' = social). Retorne null se não foi mencionado."
               }
             },
-            required: ["interests", "pain_points", "qualification_score", "next_best_action", "budget_indication", "decision_timeline"],
+            required: ["interests", "pain_points", "qualification_score", "next_best_action", "budget_indication", "decision_timeline", "qualidade_info"],
           }
         }
       }
@@ -414,9 +484,24 @@ ESTÁGIO ATUAL DO DEAL: ${currentDeal?.stage || 'Sem estágio'}` : ''}
           console.error('[Analyze] Error updating CPF/processo:', contactUpdateError);
         } else {
           console.log('[Analyze] CPF/processo updated:', contactUpdates);
-          await syncToVantariApp(supabase, contact_id);
         }
       }
+
+      // Atributos de scoring pro Next: só o que a IA extraiu com confiança (nunca inventado
+      // - o schema instrui a IA a retornar null quando o cliente não mencionou espontaneamente),
+      // + momento calculado deterministicamente a partir do horário desta mensagem.
+      const newAttributes: Record<string, string | null> = {
+        conhece_processo: insights.conhece_processo ?? null,
+        nivel_urgencia: insights.nivel_urgencia ?? null,
+        valor_estimado: insights.valor_estimado ?? null,
+        situacao_profissional: insights.situacao_profissional ?? null,
+        qualidade_info: insights.qualidade_info ?? null,
+        cidade_estado: insights.cidade_estado ?? null,
+        faixa_etaria: insights.faixa_etaria ?? null,
+        fonte: insights.fonte ?? null,
+        momento: computeMomento(new Date()),
+      };
+      await syncToVantariApp(supabase, contact_id, newAttributes);
 
       console.log('[Analyze] Memory updated successfully');
     }
